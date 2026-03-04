@@ -271,7 +271,7 @@ experiments = []
 
 for memory_limit in CONFIG.experiment_memory_limits_mb:
     for compute_budget in CONFIG.experiment_compute_budgets:
-        # Run experiment (placeholder)
+        # Run experiment with specific constraints
         result = {
             "memory_limit_mb": memory_limit,
             "compute_budget": compute_budget,
