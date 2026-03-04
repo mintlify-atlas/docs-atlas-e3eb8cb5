@@ -1,0 +1,219 @@
+---
+title: "Anomaly Detection"
+description: "Detect unusual patient patterns and trigger early warning alerts using statistical outlier detection"
+---
+
+## Overview
+
+The anomaly detection system identifies patients with abnormal clinical measurements that may require immediate attention. It uses standardized z-score analysis to flag outliers and supports early warning simulation.
+
+## OutlierDetector Class
+
+The `OutlierDetector` implements a simple but effective statistical approach based on mean absolute z-scores.
+
+### Initialization
+
+```python
+from anomaly_detection.detectors import OutlierDetector
+
+detector = OutlierDetector(random_state=42)
+```
+
+**Parameters:**
+- `random_state` (int): Random seed for reproducibility (default: 42)
+
+### Training the Detector
+
+```python
+# Fit on normal baseline data
+detector.fit(baseline_vitals)
+```
+
+**What it learns:**
+- `center`: Mean of each feature (used for centering)
+- `scale`: Standard deviation of each feature (used for scaling)
+
+A small epsilon (1e-6) is added to scale to prevent division by zero.
+
+### Anomaly Scoring
+
+Compute anomaly scores for new observations:
+
+```python
+scores = detector.score_samples(patient_vitals)
+```
+
+**Parameters:**
+- `X` (pd.DataFrame): Feature matrix to score
+
+**Returns:** pd.Series of anomaly scores (higher = more anomalous)
+
+**Calculation:**
+```python
+z = np.abs((X.values.astype(float) - self.center) / self.scale)
+score = z.mean(axis=1)  # Average absolute z-score
+```
+
+Each feature is z-normalized, then the mean absolute deviation is computed.
+
+### Anomaly Detection
+
+Detect outliers using a quantile-based threshold:
+
+```python
+results = detector.detect(patient_vitals, threshold_quantile=0.9)
+```
+
+**Parameters:**
+- `X` (pd.DataFrame): Feature matrix to evaluate
+- `threshold_quantile` (float): Quantile for threshold (default: 0.9)
+
+**Returns:** DataFrame with:
+- `anomaly_score`: Numeric score for each sample
+- `is_anomaly`: Boolean flag (True if score ≥ threshold)
+
+**Example Output:**
+```python
+   anomaly_score  is_anomaly
+0           0.42       False
+1           2.18        True
+2           0.87       False
+3           3.45        True
+4           0.31       False
+```
+
+## Early Warning System
+
+The early warning module simulates real-time alert generation based on anomaly scores.
+
+### Simulating Alerts
+
+```python
+from anomaly_detection.early_warning import simulate_early_warning
+import pandas as pd
+
+alert_info = simulate_early_warning(
+    scores=anomaly_scores,
+    timestamps=pd.to_datetime(patient_data["timestamp"]),
+    threshold=1.5
+)
+```
+
+**Parameters:**
+- `scores` (pd.Series): Anomaly scores over time
+- `timestamps` (pd.DatetimeIndex): Time of each measurement
+- `threshold` (float): Alert threshold
+
+**Returns:** Dictionary with:
+- `alert_count`: Number of alerts triggered
+- `first_alert_latency_s`: Seconds until first alert (inf if no alerts)
+
+**Example Output:**
+```python
+{
+    "alert_count": 3.0,
+    "first_alert_latency_s": 127.5
+}
+```
+
+### Evaluating Detection Latency
+
+Measure how quickly the system detects known events:
+
+```python
+from anomaly_detection.early_warning import evaluate_detection_latency
+
+latency = evaluate_detection_latency(
+    scores=anomaly_scores,
+    ground_truth_events=actual_events,
+    timestamps=timestamps
+)
+```
+
+**Parameters:**
+- `scores` (pd.Series): Anomaly scores
+- `ground_truth_events` (pd.Series): Binary labels (1 = event occurred)
+- `timestamps` (pd.DatetimeIndex): Time of each measurement
+
+**Returns:** Latency in seconds from first true event to first detection alert
+- Returns `nan` if no events exist
+- Returns `inf` if events exist but were not detected
+
+## Complete Workflow Example
+
+```python
+import pandas as pd
+from anomaly_detection.detectors import OutlierDetector
+from anomaly_detection.early_warning import simulate_early_warning
+
+# Step 1: Load baseline data (normal patients)
+baseline = pd.read_csv("normal_vitals.csv")
+features = ["heart_rate", "blood_pressure", "temperature", "oxygen_saturation"]
+
+# Step 2: Train detector on normal patterns
+detector = OutlierDetector(random_state=42)
+detector.fit(baseline[features])
+
+# Step 3: Monitor new patients
+new_patients = pd.read_csv("current_vitals.csv")
+results = detector.detect(new_patients[features], threshold_quantile=0.9)
+
+# Step 4: Identify anomalies
+anomalous_patients = new_patients[results["is_anomaly"]]
+print(f"Flagged {len(anomalous_patients)} anomalous cases")
+
+# Step 5: Simulate early warning alerts
+alert_info = simulate_early_warning(
+    scores=results["anomaly_score"],
+    timestamps=pd.to_datetime(new_patients["timestamp"]),
+    threshold=2.0
+)
+
+print(f"Alerts triggered: {alert_info['alert_count']}")
+print(f"First alert latency: {alert_info['first_alert_latency_s']:.1f} seconds")
+```
+
+## Tuning the Detector
+
+### Threshold Quantile
+
+- **0.90**: Flag top 10% as anomalies (moderate sensitivity)
+- **0.95**: Flag top 5% (higher specificity, fewer false alarms)
+- **0.85**: Flag top 15% (higher sensitivity, more alerts)
+
+### Alert Threshold
+
+```python
+# Conservative: fewer alerts, higher confidence
+alert_info = simulate_early_warning(scores, timestamps, threshold=2.5)
+
+# Aggressive: more alerts, catch more events
+alert_info = simulate_early_warning(scores, timestamps, threshold=1.0)
+```
+
+## Clinical Interpretation
+
+### High Anomaly Scores (> 2.0)
+
+Patient measurements deviate significantly from baseline:
+- Review vital signs immediately
+- Consider bedside assessment
+- Check for measurement errors
+
+### Medium Scores (1.0 - 2.0)
+
+Moderate deviation:
+- Monitor trend over time
+- Schedule follow-up measurement
+- Note in patient record
+
+### Low Scores (< 1.0)
+
+Within expected range:
+- Continue routine monitoring
+- No immediate action required
+
+## Source References
+
+- Detector implementation: `anomaly_detection/detectors.py:7-26`
+- Early warning system: `anomaly_detection/early_warning.py:7-26`

@@ -1,80 +1,263 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Run your first hospital data analytics pipeline in under 5 minutes
 ---
 
-## Get started in three steps
+Get started with the Hospital Data Analysis Platform by running your first analytics pipeline. This guide will walk you through executing the three main CLI commands and understanding the output.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have:
+
+- Python 3.10 or higher installed
+- Completed the [installation steps](/installation)
+- Hospital data CSV files in the test directory
+
+## Running Your First Pipeline
+
+<Steps>
+  <Step title="Generate Dataset Manifest">
+    Create a manifest of your hospital data files to validate schema and track data versions.
+    
+    ```bash
+    cd "Data Analysis for Hospitals/task"
+    python cli.py manifest
+    ```
+    
+    <Accordion title="Expected output">
+      ```json
+      {
+        "files": ["general.csv", "prenatal.csv", "sports.csv"],
+        "total_records": 1500,
+        "schema_version": "1.0",
+        "checksums": {
+          "general.csv": "a3b2c1d4...",
+          "prenatal.csv": "e5f6g7h8...",
+          "sports.csv": "i9j0k1l2..."
+        }
+      }
+      ```
+    </Accordion>
+    
+    This command validates your data files and generates version tracking information.
+  </Step>
+  
+  <Step title="Execute Full Analytics Pipeline">
+    Run the complete pipeline including ingestion, preprocessing, feature engineering, modeling, and deployment monitoring.
+    
+    ```bash
+    python cli.py run
+    ```
+    
+    The pipeline executes these stages:
+    
+    1. **Data Ingestion** - Loads and merges hospital CSV files
+    2. **Preprocessing** - Cleans and normalizes data
+    3. **Feature Engineering** - Creates derived features (age_range, is_adult, bmi_risk)
+    4. **Model Training** - Trains risk and outcome prediction models
+    5. **Anomaly Detection** - Identifies outliers and generates early warnings
+    6. **Streaming Inference** - Compares batch vs streaming performance
+    7. **Hardware Profiling** - Adjusts batch sizes and tracks resource utilization
+    8. **CPU Inference** - Measures inference latency and throughput
+    9. **ONNX Export** - Serializes models for cross-platform deployment
+    10. **Monitoring** - Generates deployment metrics and alert summaries
+    11. **Benchmarking** - Runs repeated experiments with confidence intervals
+    12. **Hardware Experiments** - Tests performance under different constraints
+    
+    <Accordion title="Sample output">
+      ```json
+      {
+        "reproducibility": {
+          "random_seed": 42,
+          "python_version": "3.10.12",
+          "numpy_version": "1.26.4"
+        },
+        "predictive_metrics": {
+          "risk_accuracy": 0.847,
+          "risk_f1": 0.723,
+          "risk_auc": 0.891,
+          "outcome_accuracy": 0.812,
+          "outcome_f1": 0.689,
+          "outcome_auc": 0.856
+        },
+        "anomaly_alerts": {
+          "total_alerts": 45,
+          "alert_rate": 0.03
+        },
+        "detection_latency_s": 2.4,
+        "streaming": {
+          "batch_time_s": 0.124,
+          "stream_time_s": 0.156,
+          "stream_latency_ms_per_row": 0.104,
+          "stream_throughput_rows_per_s": 9615.38
+        },
+        "hardware": {
+          "adjusted_batch_size": 64,
+          "compute_utilization": 0.73
+        },
+        "cpu_inference": {
+          "inference_latency_ms": 12.5,
+          "mean_probability": 0.342,
+          "std_probability": 0.187
+        },
+        "onnx_exported": true,
+        "deployment_monitoring": {
+          "alert_count": 12,
+          "alert_rate": 0.032,
+          "high_risk_ratio": 0.15
+        }
+      }
+      ```
+    </Accordion>
+  </Step>
+  
+  <Step title="Run Hardware-Constrained Experiments">
+    Evaluate early warning system performance under different memory, compute, and latency constraints.
+    
+    ```bash
+    python cli.py early-warning-experiment
+    ```
+    
+    This command runs 27 experiment scenarios (3 memory limits × 3 compute budgets × 3 stream speeds) to evaluate:
+    
+    - Detection latency under resource constraints
+    - Prediction accuracy vs hardware limits
+    - False positive rates
+    - Detection quality scores
+    
+    <Accordion title="Experiment output">
+      ```json
+      {
+        "summary": {
+          "total_scenarios": 27,
+          "mean_detection_latency_s": 3.2,
+          "mean_accuracy": 0.834,
+          "mean_false_positive_rate": 0.042,
+          "best_scenario": {
+            "memory_mb": 256,
+            "compute_budget": 10000,
+            "stream_interval_ms": 10
+          }
+        },
+        "benchmark": {
+          "detection_latency_s": {
+            "mean": 3.2,
+            "std": 0.8,
+            "ci_lower": 2.8,
+            "ci_upper": 3.6
+          },
+          "prediction_accuracy": {
+            "mean": 0.834,
+            "std": 0.023,
+            "ci_lower": 0.820,
+            "ci_upper": 0.848
+          }
+        },
+        "artifacts": {
+          "results_csv": "artifacts/early_warning_experiment_results.csv",
+          "plots": "artifacts/early_warning_plots.png"
+        }
+      }
+      ```
+    </Accordion>
+  </Step>
+</Steps>
+
+## Understanding Artifacts
+
+After running the pipeline, artifacts are written to `Data Analysis for Hospitals/task/artifacts/`:
+
+| File | Description |
+|------|-------------|
+| `experiment_log.json` | Complete pipeline execution log with all metrics |
+| `dataset_manifest.json` | Dataset version manifest with checksums |
+| `risk_model.onnx` | Exported ONNX model for risk prediction |
+| `hardware_profile.csv` | Hardware profiling results with operator-level metrics |
+| `early_warning_experiment_results.csv` | Detailed results from constraint experiments |
+| `early_warning_plots.png` | Visualization of performance across scenarios |
+
+## Common Workflows
+
+### Iterative Development
+
+```bash
+# 1. Validate data schema
+python cli.py manifest
+
+# 2. Run full pipeline
+python cli.py run
+
+# 3. Review artifacts and adjust config.py as needed
+
+# 4. Re-run experiments
+python cli.py early-warning-experiment
+```
+
+### Production Deployment
+
+```bash
+# 1. Run pipeline with production config
+python cli.py run
+
+# 2. Export model to ONNX (automatically done in pipeline)
+
+# 3. Validate ONNX model
+python -c "import onnx; model = onnx.load('artifacts/risk_model.onnx'); onnx.checker.check_model(model)"
+
+# 4. Deploy ONNX model to target runtime
+# (Use ONNX Runtime, TensorRT, or other compatible inference engines)
+```
+
+## Troubleshooting
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+  <Accordion title="Schema drift or missing columns">
+    **Error**: `KeyError: 'column_name'`
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+    **Solution**: Verify your CSV files match the expected schema. Run `python cli.py manifest` to see which files are being loaded.
+    
+    Required columns: `age`, `height`, `weight`, `bmi`, `children`, `months`, `hospital`, `gender`, `diagnosis`, `blood_test`
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+  
+  <Accordion title="Memory pressure under constrained hardware">
+    **Error**: `MemoryError` or slow execution
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+    **Solution**: Reduce memory limits in `config.py`:
+    
+    ```python
+    hardware_memory_limit_mb: int = 128  # Lower from 256
+    ```
+    
+    The pipeline will automatically adjust batch sizes using `auto_adjust_batch_size()`.
+  </Accordion>
+  
+  <Accordion title="High latency in streaming inference">
+    **Issue**: Streaming latency exceeds requirements
+    
+    **Solution**: Adjust chunk size in `config.py`:
+    
+    ```python
+    stream_chunk_size: int = 8  # Reduce from 16 for lower latency
+    stream_interval_ms: int = 5  # Reduce from 10 for faster updates
+    ```
+    
+    Note: Smaller chunks reduce latency but may decrease throughput.
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Core Concepts" icon="brain" href="/concepts/architecture">
+    Understand the pipeline architecture and design philosophy
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/operations/configuration">
+    Learn about all configuration options and tuning parameters
+  </Card>
+  <Card title="Modeling" icon="chart-network" href="/modeling/predictive-models">
+    Deep dive into predictive models and risk stratification
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/api/cli">
+    Complete CLI command reference with all options
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

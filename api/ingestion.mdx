@@ -1,0 +1,198 @@
+---
+title: "Ingestion Module"
+description: "API reference for data loading and versioning functions"
+---
+
+## Overview
+
+The ingestion module handles loading hospital data from CSV files and creating versioned dataset manifests for reproducibility.
+
+## Data Loading
+
+### load_hospital_data
+
+Loads hospital data from multiple CSV files and returns a dictionary of DataFrames.
+
+```python
+def load_hospital_data(data_dir: Path) -> dict[str, pd.DataFrame]
+```
+
+<ParamField path="data_dir" type="Path" required>
+  Directory path containing the hospital CSV files (general.csv, prenatal.csv, sports.csv)
+</ParamField>
+
+<ResponseField name="return" type="dict[str, pd.DataFrame]">
+  Dictionary mapping hospital names to their respective DataFrames:
+  - `"general"`: General hospital patient data
+  - `"prenatal"`: Prenatal care patient data
+  - `"sports"`: Sports medicine patient data
+</ResponseField>
+
+**Example**:
+```python
+from pathlib import Path
+from ingestion.loader import load_hospital_data
+
+data_dir = Path("data/")
+datasets = load_hospital_data(data_dir)
+
+print(f"Loaded {len(datasets)} datasets")
+print(f"General hospital records: {len(datasets['general'])}")
+print(f"Prenatal records: {len(datasets['prenatal'])}")
+print(f"Sports medicine records: {len(datasets['sports'])}")
+```
+
+**Expected Files**:
+- `data_dir/general.csv`
+- `data_dir/prenatal.csv`
+- `data_dir/sports.csv`
+
+### merge_hospital_data
+
+Merges multiple hospital datasets into a single DataFrame with aligned column schemas.
+
+```python
+def merge_hospital_data(datasets: dict[str, pd.DataFrame]) -> pd.DataFrame
+```
+
+<ParamField path="datasets" type="dict[str, pd.DataFrame]" required>
+  Dictionary of DataFrames to merge, typically from `load_hospital_data()`
+</ParamField>
+
+<ResponseField name="return" type="pd.DataFrame">
+  Merged DataFrame with:
+  - All records from all hospitals concatenated vertically
+  - Column names aligned to the general hospital schema
+  - `"Unnamed: 0"` column removed if present
+  - Reset index (ignore_index=True)
+</ResponseField>
+
+**Example**:
+```python
+from ingestion.loader import load_hospital_data, merge_hospital_data
+from pathlib import Path
+
+datasets = load_hospital_data(Path("data/"))
+merged_df = merge_hospital_data(datasets)
+
+print(f"Total records: {len(merged_df)}")
+print(f"Columns: {list(merged_df.columns)}")
+```
+
+**Implementation Details**:
+- Uses the general hospital's column names as the canonical schema
+- All other datasets have their columns renamed to match
+- Concatenation uses `pd.concat()` with `ignore_index=True`
+- Automatically removes index columns created by pandas
+
+## Dataset Versioning
+
+### create_dataset_manifest
+
+Generates a versioned manifest of dataset files with cryptographic checksums.
+
+```python
+def create_dataset_manifest(data_dir: Path, output_path: Path) -> dict
+```
+
+<ParamField path="data_dir" type="Path" required>
+  Directory containing the CSV files to catalog
+</ParamField>
+
+<ParamField path="output_path" type="Path" required>
+  Path where the manifest JSON file will be written (e.g., `output_dir/dataset_manifest.json`)
+</ParamField>
+
+<ResponseField name="return" type="dict">
+  Manifest dictionary containing:
+  - `dataset_dir` (str): Path to the dataset directory
+  - `files` (list): List of file metadata objects, each with:
+    - `name` (str): Filename
+    - `sha256` (str): SHA-256 checksum hex digest
+    - `size` (int): File size in bytes
+</ResponseField>
+
+**Example**:
+```python
+from pathlib import Path
+from ingestion.versioning import create_dataset_manifest
+
+data_dir = Path("data/")
+output_path = Path("output/dataset_manifest.json")
+
+manifest = create_dataset_manifest(data_dir, output_path)
+
+print(f"Dataset directory: {manifest['dataset_dir']}")
+for file_info in manifest['files']:
+    print(f"  {file_info['name']}: {file_info['size']} bytes, SHA-256: {file_info['sha256'][:16]}...")
+```
+
+**Output Format** (`dataset_manifest.json`):
+```json
+{
+  "dataset_dir": "/path/to/data",
+  "files": [
+    {
+      "name": "general.csv",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 1048576
+    },
+    {
+      "name": "prenatal.csv",
+      "sha256": "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592",
+      "size": 524288
+    },
+    {
+      "name": "sports.csv",
+      "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "size": 786432
+    }
+  ]
+}
+```
+
+**Use Cases**:
+- Dataset versioning for reproducibility
+- Detecting data changes between pipeline runs
+- Validating data integrity during transfers
+- Tracking dataset lineage in experiments
+
+### hash_file
+
+Computes SHA-256 checksum for a file.
+
+```python
+def hash_file(path: Path) -> str
+```
+
+<ParamField path="path" type="Path" required>
+  Path to the file to hash
+</ParamField>
+
+<ResponseField name="return" type="str">
+  SHA-256 checksum as hexadecimal string
+</ResponseField>
+
+**Example**:
+```python
+from pathlib import Path
+from ingestion.versioning import hash_file
+
+file_path = Path("data/general.csv")
+checksum = hash_file(file_path)
+print(f"SHA-256: {checksum}")
+```
+
+## Constants
+
+### HOSPITAL_FILES
+
+Mapping of hospital names to their corresponding CSV filenames.
+
+```python
+HOSPITAL_FILES = {
+    "general": "general.csv",
+    "prenatal": "prenatal.csv",
+    "sports": "sports.csv",
+}
+```

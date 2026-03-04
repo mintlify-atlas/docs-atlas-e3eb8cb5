@@ -1,0 +1,165 @@
+---
+title: "Benchmarking API"
+description: "API reference for benchmark execution and statistical analysis"
+---
+
+## Overview
+
+The benchmark module provides utilities for running repeated benchmarks with statistical confidence intervals and analyzing tabular metrics.
+
+## Data Classes
+
+### BenchmarkResult
+
+Contains the results of a repeated benchmark run with confidence intervals.
+
+```python
+@dataclass
+class BenchmarkResult:
+    metric_mean: float
+    metric_std: float
+    metric_ci_margin: float
+    latency_mean_ms: float
+    latency_std_ms: float
+    latency_ci_margin_ms: float
+    runs: int
+    confidence_level: float
+```
+
+<ParamField path="metric_mean" type="float">
+  Mean value of the measured metric across all runs
+</ParamField>
+
+<ParamField path="metric_std" type="float">
+  Standard deviation of the metric
+</ParamField>
+
+<ParamField path="metric_ci_margin" type="float">
+  Confidence interval margin for the metric
+</ParamField>
+
+<ParamField path="latency_mean_ms" type="float">
+  Mean latency in milliseconds across all runs
+</ParamField>
+
+<ParamField path="latency_std_ms" type="float">
+  Standard deviation of latency in milliseconds
+</ParamField>
+
+<ParamField path="latency_ci_margin_ms" type="float">
+  Confidence interval margin for latency in milliseconds
+</ParamField>
+
+<ParamField path="runs" type="int">
+  Number of benchmark runs executed
+</ParamField>
+
+<ParamField path="confidence_level" type="float">
+  Confidence level used for interval calculation (e.g., 0.95 for 95%)
+</ParamField>
+
+## Functions
+
+### run_repeated_benchmark
+
+Executes a function multiple times and returns benchmark statistics with confidence intervals.
+
+```python
+def run_repeated_benchmark(
+    run_fn,
+    metric_key: str,
+    runs: int = 5,
+    confidence: float = 0.95
+) -> BenchmarkResult
+```
+
+<ParamField path="run_fn" type="callable" required>
+  Function to benchmark. Must return a dictionary containing the metric specified by `metric_key`
+</ParamField>
+
+<ParamField path="metric_key" type="str" required>
+  Key to extract from the function's return dictionary for metric tracking
+</ParamField>
+
+<ParamField path="runs" type="int" default="5">
+  Number of times to run the function. Minimum of 2 runs will be enforced
+</ParamField>
+
+<ParamField path="confidence" type="float" default="0.95">
+  Confidence level for interval calculation (0-1)
+</ParamField>
+
+<ResponseField name="return" type="BenchmarkResult">
+  A BenchmarkResult object containing mean, standard deviation, and confidence interval margins for both the metric and latency measurements
+</ResponseField>
+
+**Example:**
+```python
+from evaluation.benchmark import run_repeated_benchmark
+
+def my_model():
+    # Run your model
+    return {"accuracy": 0.95, "f1": 0.92}
+
+result = run_repeated_benchmark(
+    run_fn=my_model,
+    metric_key="accuracy",
+    runs=10,
+    confidence=0.95
+)
+
+print(f"Accuracy: {result.metric_mean:.3f} ± {result.metric_ci_margin:.3f}")
+print(f"Latency: {result.latency_mean_ms:.2f} ± {result.latency_ci_margin_ms:.2f} ms")
+```
+
+### benchmark_table_metrics
+
+Computes confidence intervals for multiple metric columns in a DataFrame.
+
+```python
+def benchmark_table_metrics(
+    df,
+    metric_columns: list[str],
+    confidence: float = 0.95
+) -> dict[str, dict[str, float]]
+```
+
+<ParamField path="df" type="pandas.DataFrame" required>
+  DataFrame containing the metric columns to analyze
+</ParamField>
+
+<ParamField path="metric_columns" type="list[str]" required>
+  List of column names to compute statistics for
+</ParamField>
+
+<ParamField path="confidence" type="float" default="0.95">
+  Confidence level for interval calculation (0-1)
+</ParamField>
+
+<ResponseField name="return" type="dict[str, dict[str, float]]">
+  Dictionary mapping each metric column name to a dictionary containing:
+  - `mean`: Mean value
+  - `std`: Standard deviation
+  - `ci_margin`: Confidence interval margin
+  - `confidence`: Confidence level used
+</ResponseField>
+
+**Example:**
+```python
+import pandas as pd
+from evaluation.benchmark import benchmark_table_metrics
+
+df = pd.DataFrame({
+    "accuracy": [0.95, 0.94, 0.96, 0.95],
+    "f1_score": [0.92, 0.91, 0.93, 0.92]
+})
+
+summary = benchmark_table_metrics(
+    df,
+    metric_columns=["accuracy", "f1_score"],
+    confidence=0.95
+)
+
+for metric, stats in summary.items():
+    print(f"{metric}: {stats['mean']:.3f} ± {stats['ci_margin']:.3f}")
+```

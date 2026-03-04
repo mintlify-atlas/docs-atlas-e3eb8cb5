@@ -1,0 +1,220 @@
+---
+title: "Energy Estimation API"
+description: "API reference for energy consumption estimation and precision tradeoff analysis"
+---
+
+## Overview
+
+The energy module provides utilities for estimating energy consumption of model inference and comparing energy efficiency across different numerical precision modes.
+
+## Functions
+
+### estimate_energy_joules
+
+Estimates energy consumption based on runtime and power draw.
+
+```python
+def estimate_energy_joules(
+    runtime_s: float,
+    power_watts: float
+) -> float
+```
+
+<ParamField path="runtime_s" type="float" required>
+  Runtime duration in seconds
+</ParamField>
+
+<ParamField path="power_watts" type="float" required>
+  Average power consumption in watts
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Energy consumption in joules (watt-seconds)
+</ResponseField>
+
+**Formula:**
+```
+energy (J) = runtime (s) × power (W)
+```
+
+**Example:**
+```python
+from utils.energy import estimate_energy_joules
+
+# Model runs for 0.5 seconds at 45 watts
+energy = estimate_energy_joules(
+    runtime_s=0.5,
+    power_watts=45
+)
+print(f"Energy consumed: {energy:.2f} joules")
+
+# Compare different scenarios
+fast_energy = estimate_energy_joules(runtime_s=0.2, power_watts=60)
+slow_energy = estimate_energy_joules(runtime_s=0.8, power_watts=30)
+
+print(f"Fast/high-power: {fast_energy:.2f} J")
+print(f"Slow/low-power: {slow_energy:.2f} J")
+```
+
+### compare_precision_energy
+
+Compares energy consumption between FP32 and FP16 precision modes.
+
+```python
+def compare_precision_energy(
+    runtime_s: float,
+    batch_size: int
+) -> dict[str, float]
+```
+
+<ParamField path="runtime_s" type="float" required>
+  Base runtime in seconds (for FP32 precision)
+</ParamField>
+
+<ParamField path="batch_size" type="int" required>
+  Batch size, which affects power consumption scaling
+</ParamField>
+
+<ResponseField name="return" type="dict[str, float]">
+  Dictionary containing energy estimates and savings:
+  
+  **fp32_joules** (float): Energy consumption with 32-bit floating point
+  
+  **fp16_joules** (float): Energy consumption with 16-bit floating point
+  
+  **energy_saving_ratio** (float): Fractional energy savings from using FP16 (0-1)
+</ResponseField>
+
+**Power Models:**
+
+The function uses simplified power models that scale with batch size:
+
+- **FP32 power**: `45 + batch_size × 0.05` watts
+- **FP16 power**: `35 + batch_size × 0.03` watts
+- **FP16 runtime**: `runtime_s × 0.8` (20% speedup)
+
+**Energy Saving Calculation:**
+```
+saving_ratio = 1 - (fp16_energy / fp32_energy)
+```
+
+**Example:**
+```python
+from utils.energy import compare_precision_energy
+
+# Compare energy for a 0.5s inference with batch size 32
+comparison = compare_precision_energy(
+    runtime_s=0.5,
+    batch_size=32
+)
+
+print(f"FP32 energy: {comparison['fp32_joules']:.2f} J")
+print(f"FP16 energy: {comparison['fp16_joules']:.2f} J")
+print(f"Energy savings: {comparison['energy_saving_ratio']:.1%}")
+```
+
+### Batch Size Impact Analysis
+
+```python
+from utils.energy import compare_precision_energy
+import matplotlib.pyplot as plt
+
+batch_sizes = [8, 16, 32, 64, 128]
+runtime_s = 0.5
+
+fp32_energies = []
+fp16_energies = []
+savings = []
+
+for batch in batch_sizes:
+    result = compare_precision_energy(runtime_s, batch)
+    fp32_energies.append(result['fp32_joules'])
+    fp16_energies.append(result['fp16_joules'])
+    savings.append(result['energy_saving_ratio'] * 100)
+
+plt.figure(figsize=(10, 6))
+plt.subplot(1, 2, 1)
+plt.plot(batch_sizes, fp32_energies, marker='o', label='FP32')
+plt.plot(batch_sizes, fp16_energies, marker='s', label='FP16')
+plt.xlabel('Batch Size')
+plt.ylabel('Energy (J)')
+plt.title('Energy vs Batch Size')
+plt.legend()
+plt.grid(True)
+
+plt.subplot(1, 2, 2)
+plt.plot(batch_sizes, savings, marker='o', color='green')
+plt.xlabel('Batch Size')
+plt.ylabel('Energy Savings (%)')
+plt.title('FP16 Energy Savings')
+plt.grid(True)
+
+plt.tight_layout()
+plt.savefig('energy_analysis.png')
+plt.close()
+
+print("Energy analysis saved to energy_analysis.png")
+```
+
+### Runtime Impact on Energy
+
+```python
+from utils.energy import compare_precision_energy
+
+batch_size = 32
+runtimes = [0.1, 0.25, 0.5, 1.0, 2.0]
+
+print("Runtime (s) | FP32 (J) | FP16 (J) | Savings (%)")
+print("-" * 55)
+
+for runtime in runtimes:
+    result = compare_precision_energy(runtime, batch_size)
+    print(f"{runtime:11.2f} | {result['fp32_joules']:8.2f} | "
+          f"{result['fp16_joules']:8.2f} | "
+          f"{result['energy_saving_ratio']*100:11.1f}")
+```
+
+### Estimating Daily Energy Costs
+
+```python
+from utils.energy import compare_precision_energy
+
+# Model parameters
+inferences_per_day = 10000
+average_runtime_s = 0.5
+batch_size = 32
+
+# Get energy per inference
+comparison = compare_precision_energy(average_runtime_s, batch_size)
+
+# Calculate daily energy
+fp32_daily_joules = comparison['fp32_joules'] * inferences_per_day
+fp16_daily_joules = comparison['fp16_joules'] * inferences_per_day
+
+# Convert to kWh (1 kWh = 3,600,000 J)
+fp32_daily_kwh = fp32_daily_joules / 3_600_000
+fp16_daily_kwh = fp16_daily_joules / 3_600_000
+
+# Energy cost (example: $0.12 per kWh)
+cost_per_kwh = 0.12
+fp32_daily_cost = fp32_daily_kwh * cost_per_kwh
+fp16_daily_cost = fp16_daily_kwh * cost_per_kwh
+
+print(f"Daily inferences: {inferences_per_day:,}")
+print(f"\nFP32:")
+print(f"  Energy: {fp32_daily_kwh:.3f} kWh")
+print(f"  Cost: ${fp32_daily_cost:.2f}")
+print(f"\nFP16:")
+print(f"  Energy: {fp16_daily_kwh:.3f} kWh")
+print(f"  Cost: ${fp16_daily_cost:.2f}")
+print(f"\nDaily savings: ${fp32_daily_cost - fp16_daily_cost:.2f}")
+print(f"Annual savings: ${(fp32_daily_cost - fp16_daily_cost) * 365:.2f}")
+```
+
+## Notes
+
+- Power models are simplified estimates and should be calibrated for specific hardware
+- FP16 speedup (0.8×) and power reduction are approximate and hardware-dependent
+- Actual energy consumption varies with GPU/CPU architecture, temperature, and workload
+- For production systems, measure actual power draw using hardware monitoring tools
+- Energy savings from reduced precision must be balanced against potential accuracy impacts

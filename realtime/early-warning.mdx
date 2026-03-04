@@ -1,0 +1,206 @@
+---
+title: Early Warning System
+description: Generate real-time alerts for critical patient conditions using anomaly detection and threshold-based early warning
+---
+
+## Overview
+
+The early warning system detects critical patient conditions by analyzing anomaly scores against configurable thresholds. It measures detection latency to ensure timely alerts for healthcare providers.
+
+## Alert Generation
+
+Generate alerts when anomaly scores exceed a threshold:
+
+```python
+from anomaly_detection.early_warning import simulate_early_warning
+import pandas as pd
+
+# Anomaly scores from detector
+scores = pd.Series([0.3, 0.5, 0.8, 0.9, 0.7])
+
+# Timestamps for each score
+timestamps = pd.date_range('2025-01-01', periods=5, freq='1min')
+
+# Simulate early warning with threshold
+alert_info = simulate_early_warning(
+    scores=scores,
+    timestamps=timestamps,
+    threshold=0.75
+)
+
+print(f"Alerts triggered: {alert_info['alert_count']}")
+print(f"First alert latency: {alert_info['first_alert_latency_s']}s")
+```
+
+Output:
+```
+Alerts triggered: 2.0
+First alert latency: 120.0s
+```
+
+Source: `anomaly_detection/early_warning.py:7-14`
+
+## Alert Metrics
+
+The `simulate_early_warning()` function returns:
+
+- `alert_count`: Total number of alerts triggered
+- `first_alert_latency_s`: Seconds from start until first alert
+- Returns `inf` latency if no alerts triggered
+
+## Detection Latency Evaluation
+
+Measure how quickly the system detects actual events:
+
+```python
+from anomaly_detection.early_warning import evaluate_detection_latency
+import pandas as pd
+import numpy as np
+
+# Ground truth events (1 = event occurred)
+ground_truth = pd.Series([0, 0, 1, 1, 0, 1])
+
+# Anomaly scores from model
+scores = pd.Series([0.2, 0.4, 0.7, 0.9, 0.3, 0.8])
+
+# Event timestamps
+timestamps = pd.date_range('2025-01-01 00:00', periods=6, freq='30s')
+
+# Evaluate detection latency
+latency = evaluate_detection_latency(
+    scores=scores,
+    ground_truth_events=ground_truth,
+    timestamps=timestamps
+)
+
+print(f"Detection latency: {latency}s")
+```
+
+This measures the time between the first ground truth event and the first high-confidence alert (90th percentile threshold).
+
+Source: `anomaly_detection/early_warning.py:17-26`
+
+## Hardware-Constrained Early Warning
+
+Run experiments under resource constraints:
+
+```python
+from evaluation.early_warning_experiment import (
+    ConstraintScenario,
+    run_hardware_constrained_early_warning_experiment
+)
+from pathlib import Path
+
+# Define constraint scenarios
+scenarios = [
+    ConstraintScenario(
+        memory_limit_mb=512,
+        compute_budget=1000,
+        stream_interval_ms=100
+    ),
+    ConstraintScenario(
+        memory_limit_mb=1024,
+        compute_budget=5000,
+        stream_interval_ms=50
+    ),
+]
+
+# Run experiment
+results, artifacts = run_hardware_constrained_early_warning_experiment(
+    df=patient_data,
+    feature_cols=['age', 'blood_pressure', 'heart_rate'],
+    target_col='diagnosis',
+    scenarios=scenarios,
+    output_dir=Path('output/early_warning')
+)
+
+print(results[[
+    'memory_limit_mb',
+    'detection_latency_s',
+    'prediction_accuracy',
+    'false_positive_rate'
+]])
+```
+
+Source: `evaluation/early_warning_experiment.py:64-107`
+
+## Constraint Scenarios
+
+The `ConstraintScenario` dataclass defines resource limits:
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class ConstraintScenario:
+    memory_limit_mb: int        # Available memory
+    compute_budget: int         # Processing budget
+    stream_interval_ms: int     # Time between data points
+```
+
+Source: `evaluation/early_warning_experiment.py:16-20`
+
+## Experiment Results
+
+The experiment produces a DataFrame with metrics:
+
+- `memory_limit_mb`: Memory constraint
+- `compute_budget`: Compute constraint
+- `stream_interval_ms`: Streaming interval
+- `effective_batch_size`: Auto-adjusted batch size
+- `detection_latency_s`: Time to detect events
+- `prediction_accuracy`: Prediction accuracy
+- `false_positives`: Count of false positive alerts
+- `false_positive_rate`: FP ratio
+- `compute_utilization`: Resource utilization
+- `detection_quality`: Quality metric (accuracy - 0.5 × FPR)
+
+Source: `evaluation/early_warning_experiment.py:50-61`
+
+## Experiment Artifacts
+
+The experiment generates:
+
+1. **CSV results**: `early_warning_hardware_experiment.csv`
+2. **Latency vs Accuracy plot**: Shows tradeoff colored by compute budget
+3. **Resource vs Quality plot**: Resource score vs detection quality
+
+```python
+print(artifacts)
+```
+
+Output:
+```python
+{
+    'results_csv': 'output/early_warning/early_warning_hardware_experiment.csv',
+    'latency_vs_accuracy_plot': 'output/early_warning/latency_vs_accuracy.png',
+    'resource_vs_detection_quality_plot': 'output/early_warning/resource_vs_detection_quality.png'
+}
+```
+
+## Performance Summary
+
+Summarize experiment results:
+
+```python
+from evaluation.early_warning_experiment import summarize_experiment
+
+summary = summarize_experiment(results)
+
+print(f"Mean latency: {summary['latency_mean_s']:.2f}s ± {summary['latency_std_s']:.2f}s")
+print(f"Mean accuracy: {summary['accuracy_mean']:.3f} ± {summary['accuracy_std']:.3f}")
+print(f"Mean FP rate: {summary['false_positive_rate_mean']:.3f}")
+print(f"Mean quality: {summary['quality_mean']:.3f}")
+```
+
+Source: `evaluation/early_warning_experiment.py:110-120`
+
+## Best Practices
+
+- Set threshold based on acceptable false positive rate
+- Monitor `first_alert_latency_s` for critical conditions
+- Use `evaluate_detection_latency()` to validate against ground truth
+- Test under realistic hardware constraints
+- Balance detection quality with resource utilization
+- Target events: conditions like appendicitis, pregnancy complications
+- Use 90th percentile threshold for high-confidence alerts

@@ -1,0 +1,185 @@
+---
+title: Configuration
+description: System configuration parameters and the SystemConfig dataclass for the Hospital Data Analysis Platform
+---
+
+## Overview
+
+The Hospital Data Analysis Platform uses a centralized configuration system based on the `SystemConfig` dataclass. This approach provides type safety, default values, and clear documentation of all configurable parameters.
+
+## SystemConfig Dataclass
+
+The `SystemConfig` dataclass is defined in `config.py:6` and serves as the single source of truth for all system parameters.
+
+```python
+from dataclasses import dataclass, field
+from pathlib import Path
+
+@dataclass
+class SystemConfig:
+    random_seed: int = 42
+    test_size: float = 0.25
+    data_dir: Path = Path(__file__).resolve().parent.parent / "test"
+    output_dir: Path = Path(__file__).resolve().parent / "artifacts"
+    stream_chunk_size: int = 16
+    stream_interval_ms: int = 10
+    hardware_memory_limit_mb: int = 256
+    hardware_compute_budget: int = 10_000
+    benchmark_runs: int = 5
+    confidence_level: float = 0.95
+    feature_columns: list[str] = field(
+        default_factory=lambda: ["age", "height", "weight", "bmi", "children", "months"]
+    )
+    target_risk: str = "diagnosis"
+    target_outcome: str = "blood_test"
+    experiment_memory_limits_mb: list[int] = field(default_factory=lambda: [64, 128, 256])
+    experiment_compute_budgets: list[int] = field(default_factory=lambda: [2_000, 5_000, 10_000])
+    experiment_stream_speeds_ms: list[int] = field(default_factory=lambda: [5, 10, 20])
+```
+
+## Configuration Parameters
+
+### Reproducibility
+
+**`random_seed`** (int, default: `42`)
+
+Global random seed for reproducible experiments. This seed is propagated to Python's `random`, NumPy's random number generator, and the `PYTHONHASHSEED` environment variable.
+
+### Data Splitting
+
+**`test_size`** (float, default: `0.25`)
+
+Fraction of the dataset reserved for testing. The remaining data is used for training.
+
+### File Paths
+
+**`data_dir`** (Path, default: `../test`)
+
+Directory containing input CSV datasets. Defaults to the `test` directory relative to the project root.
+
+**`output_dir`** (Path, default: `artifacts/`)
+
+Directory for storing outputs including trained models, benchmark results, and diagnostic reports. The directory is automatically created if it doesn't exist.
+
+### Streaming Parameters
+
+**`stream_chunk_size`** (int, default: `16`)
+
+Number of records processed per streaming batch. Smaller values reduce memory footprint but increase I/O overhead.
+
+**`stream_interval_ms`** (int, default: `10`)
+
+Delay in milliseconds between streaming chunks. Used to simulate real-time data ingestion.
+
+### Hardware Constraints
+
+**`hardware_memory_limit_mb`** (int, default: `256`)
+
+Memory budget in megabytes for resource-constrained execution. Used for deployment sizing and constraint validation.
+
+**`hardware_compute_budget`** (int, default: `10_000`)
+
+Computational budget representing the number of operations or inference cycles allowed. Used for performance profiling.
+
+### Benchmarking
+
+**`benchmark_runs`** (int, default: `5`)
+
+Number of repeated benchmark iterations for statistical confidence. Higher values improve estimate reliability but increase runtime.
+
+**`confidence_level`** (float, default: `0.95`)
+
+Confidence level for statistical intervals (e.g., 0.95 = 95% confidence). Supported values: `0.90`, `0.95`, `0.99`.
+
+### Features and Targets
+
+**`feature_columns`** (list[str], default: `["age", "height", "weight", "bmi", "children", "months"]`)
+
+List of column names used as input features for model training.
+
+**`target_risk`** (str, default: `"diagnosis"`)
+
+Column name for the primary risk classification target.
+
+**`target_outcome`** (str, default: `"blood_test"`)
+
+Column name for the secondary outcome prediction target.
+
+### Experiment Ranges
+
+**`experiment_memory_limits_mb`** (list[int], default: `[64, 128, 256]`)
+
+Memory limits to test during resource constraint experiments.
+
+**`experiment_compute_budgets`** (list[int], default: `[2_000, 5_000, 10_000]`)
+
+Compute budgets to test during performance experiments.
+
+**`experiment_stream_speeds_ms`** (list[int], default: `[5, 10, 20]`)
+
+Streaming intervals to test during latency experiments.
+
+## Usage Example
+
+### Using Default Configuration
+
+```python
+from config import CONFIG
+
+print(f"Random seed: {CONFIG.random_seed}")
+print(f"Output directory: {CONFIG.output_dir}")
+print(f"Feature columns: {CONFIG.feature_columns}")
+```
+
+### Creating Custom Configuration
+
+```python
+from config import SystemConfig
+from pathlib import Path
+
+custom_config = SystemConfig(
+    random_seed=123,
+    test_size=0.3,
+    output_dir=Path("/tmp/my_experiment"),
+    benchmark_runs=10,
+    confidence_level=0.99
+)
+
+custom_config.output_dir.mkdir(parents=True, exist_ok=True)
+```
+
+### Modifying Global Configuration
+
+```python
+from config import CONFIG
+
+# Adjust for low-memory environment
+CONFIG.hardware_memory_limit_mb = 128
+CONFIG.stream_chunk_size = 8
+
+# Use more benchmark runs for critical evaluation
+CONFIG.benchmark_runs = 20
+```
+
+## Best Practices
+
+1. **Immutable Defaults**: Avoid modifying the global `CONFIG` object across modules. Instead, pass configuration objects as function parameters.
+
+2. **Path Validation**: Always ensure `output_dir` exists before writing artifacts:
+   ```python
+   CONFIG.output_dir.mkdir(parents=True, exist_ok=True)
+   ```
+
+3. **Seed Propagation**: Use the reproducibility utilities to properly set the random seed:
+   ```python
+   from utils.reproducibility import set_global_seed
+   set_global_seed(CONFIG.random_seed)
+   ```
+
+4. **Environment-Specific Overrides**: Use environment variables or configuration files for deployment-specific settings rather than hardcoding values.
+
+## See Also
+
+- [Reproducibility](/operations/reproducibility) - Seed management and environment controls
+- [Benchmarking](/operations/benchmarking) - Using benchmark configuration parameters
+- [Troubleshooting](/operations/troubleshooting) - Common configuration issues

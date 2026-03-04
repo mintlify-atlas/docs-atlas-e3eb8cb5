@@ -1,0 +1,353 @@
+---
+title: Hardware Profiling
+description: Profile model performance, memory usage, and resource utilization for deployment optimization
+---
+
+## Overview
+
+The hardware profiling module estimates computational costs, memory requirements, and resource utilization for model inference. It provides layer-by-layer operator analysis and quantization tradeoffs to optimize deployment on resource-constrained hardware.
+
+## Core Functions
+
+### build_hardware_profile_table
+
+```python
+def build_hardware_profile_table(
+    feature_count: int, 
+    batch_size: int, 
+    stream_interval_ms: int
+) -> dict:
+    """
+    Build a comprehensive hardware performance profile.
+    
+    Args:
+        feature_count: Number of input features
+        batch_size: Inference batch size
+        stream_interval_ms: Time window for streaming data
+    
+    Returns:
+        Dictionary containing operator profiles, totals, precision 
+        tradeoffs, and edge deployment constraints
+    """
+```
+
+**Source**: `evaluation/hardware_profile.py:18`
+
+### write_hardware_profile_artifacts
+
+```python
+def write_hardware_profile_artifacts(
+    profile: dict, 
+    output_dir: Path
+) -> dict[str, str]:
+    """
+    Write hardware profile data to CSV files.
+    
+    Args:
+        profile: Profile dictionary from build_hardware_profile_table
+        output_dir: Directory to write CSV artifacts
+    
+    Returns:
+        Dictionary mapping artifact names to file paths
+    """
+```
+
+**Source**: `evaluation/hardware_profile.py:48`
+
+## Usage Example
+
+```python
+from pathlib import Path
+from evaluation.hardware_profile import (
+    build_hardware_profile_table,
+    write_hardware_profile_artifacts
+)
+
+# Define deployment parameters
+feature_count = 42  # Number of model features
+batch_size = 32     # Inference batch size
+stream_interval_ms = 1000  # 1 second streaming window
+
+# Generate hardware profile
+profile = build_hardware_profile_table(
+    feature_count=feature_count,
+    batch_size=batch_size,
+    stream_interval_ms=stream_interval_ms
+)
+
+# Inspect results
+print(f"Total latency: {profile['totals']['latency_ms']:.2f} ms")
+print(f"Total memory: {profile['totals']['memory_kb']:.2f} KB")
+print(f"Bandwidth: {profile['totals']['estimated_bandwidth_mb_s']:.2f} MB/s")
+print(f"Utilization: {profile['totals']['stream_utilization']:.2%}")
+
+# Write to disk
+artifacts = write_hardware_profile_artifacts(
+    profile=profile,
+    output_dir=Path('artifacts/hardware')
+)
+
+print(f"Operator profile: {artifacts['operator_profile_csv']}")
+print(f"Hardware totals: {artifacts['hardware_totals_csv']}")
+```
+
+## Profile Structure
+
+The hardware profile contains four main sections:
+
+### 1. operator_profile
+
+List of operator-level metrics. Each operator has:
+
+- **operator**: Operation name (e.g., `input_normalization`, `linear_projection`)
+- **latency_ms**: Estimated latency in milliseconds
+- **memory_kb**: Memory footprint in kilobytes
+
+**Example**:
+```python
+[
+    {"operator": "input_normalization", "latency_ms": 0.32, "memory_kb": 10.5},
+    {"operator": "linear_projection", "latency_ms": 0.96, "memory_kb": 31.5},
+    {"operator": "activation", "latency_ms": 0.256, "memory_kb": 10.5},
+    {"operator": "decision_head", "latency_ms": 0.384, "memory_kb": 0.25}
+]
+```
+
+### 2. totals
+
+Aggregated metrics across all operators:
+
+- **latency_ms**: Sum of all operator latencies
+- **memory_kb**: Sum of all operator memory usage
+- **estimated_bandwidth_mb_s**: Memory bandwidth estimate
+- **stream_utilization**: Fraction of stream interval used for compute
+
+**Bandwidth calculation** (`hardware_profile.py:24`):
+```python
+bytes_moved = total_memory_kb * 1024
+bandwidth_mb_s = (bytes_moved / (1024 * 1024)) / max(total_latency_ms / 1000, 1e-9)
+```
+
+**Utilization calculation** (`hardware_profile.py:25`):
+```python
+utilization = min(1.0, total_latency_ms / max(stream_interval_ms, 1))
+```
+
+### 3. precision_tradeoffs
+
+Memory savings from quantization:
+
+- **fp32_memory_kb**: Full precision (baseline)
+- **fp16_memory_kb**: Half precision (50% reduction)
+- **int8_memory_kb**: 8-bit integer (75% reduction)
+- **note**: Warning about deployment-specific latency effects
+
+**Example**:
+```python
+{
+    "fp32_memory_kb": 52.75,
+    "fp16_memory_kb": 26.375,
+    "int8_memory_kb": 13.1875,
+    "note": "Latency effects from quantization are deployment dependent..."
+}
+```
+
+### 4. edge_constraints
+
+Deployment considerations:
+
+- **cache_sensitivity**: Impact of small batch sizes on cache efficiency
+- **bottleneck**: Description of primary performance bottleneck
+
+## Operator Cost Estimation
+
+Layer costs are estimated using empirical formulas (`hardware_profile.py:8-15`):
+
+```python
+def _estimate_layer_costs(feature_count: int, batch_size: int) -> pd.DataFrame:
+    rows = [
+        {"operator": "input_normalization", 
+         "latency_ms": 0.01 * batch_size, 
+         "memory_kb": feature_count * batch_size * 8 / 1024},
+        {"operator": "linear_projection", 
+         "latency_ms": 0.03 * batch_size, 
+         "memory_kb": feature_count * batch_size * 12 / 1024},
+        {"operator": "activation", 
+         "latency_ms": 0.008 * batch_size, 
+         "memory_kb": feature_count * batch_size * 4 / 1024},
+        {"operator": "decision_head", 
+         "latency_ms": 0.012 * batch_size, 
+         "memory_kb": batch_size * 8 / 1024},
+    ]
+    return pd.DataFrame(rows)
+```
+
+**Note**: These are estimates. Actual performance varies by hardware, compiler optimizations, and model architecture.
+
+## Hardware Utilities
+
+The `utils/hardware.py` module provides helper functions:
+
+### HardwareProfile Dataclass
+
+```python
+@dataclass
+class HardwareProfile:
+    memory_limit_mb: int
+    compute_budget: int
+```
+
+**Source**: `utils/hardware.py:6`
+
+### estimate_batch_memory_mb
+
+```python
+def estimate_batch_memory_mb(
+    batch_size: int, 
+    feature_count: int, 
+    bytes_per_feature: int = 8
+) -> float:
+    return (batch_size * feature_count * bytes_per_feature) / (1024 * 1024)
+```
+
+**Source**: `utils/hardware.py:12`
+
+Estimates memory usage for a batch in megabytes. Default assumes 8 bytes per feature (fp64).
+
+### auto_adjust_batch_size
+
+```python
+def auto_adjust_batch_size(
+    initial_batch: int, 
+    feature_count: int, 
+    profile: HardwareProfile
+) -> int:
+    batch = initial_batch
+    while batch > 1 and estimate_batch_memory_mb(batch, feature_count) > profile.memory_limit_mb:
+        batch //= 2
+    return max(1, batch)
+```
+
+**Source**: `utils/hardware.py:16`
+
+Automatically reduces batch size to fit memory constraints. Uses binary search (halving).
+
+**Usage example**:
+```python
+from utils.hardware import HardwareProfile, auto_adjust_batch_size
+
+profile = HardwareProfile(memory_limit_mb=128, compute_budget=1000)
+adjusted_batch = auto_adjust_batch_size(
+    initial_batch=64,
+    feature_count=42,
+    profile=profile
+)
+print(f"Adjusted batch size: {adjusted_batch}")
+```
+
+### compute_utilization
+
+```python
+def compute_utilization(
+    operations: int, 
+    profile: HardwareProfile
+) -> float:
+    return min(1.0, operations / max(profile.compute_budget, 1))
+```
+
+**Source**: `utils/hardware.py:23`
+
+Calculates compute utilization as a fraction (0.0 to 1.0).
+
+## CSV Artifacts
+
+The `write_hardware_profile_artifacts` function generates two CSV files:
+
+### operator_profile.csv
+
+```csv
+operator,latency_ms,memory_kb
+input_normalization,0.32,10.5
+linear_projection,0.96,31.5
+activation,0.256,10.5
+decision_head,0.384,0.25
+```
+
+### hardware_totals.csv
+
+```csv
+latency_ms,memory_kb,estimated_bandwidth_mb_s,stream_utilization
+1.92,52.75,26.8,0.00192
+```
+
+## Optimization Workflow
+
+1. **Profile baseline** with production batch size and feature count
+2. **Identify bottleneck** from `edge_constraints`
+3. **Evaluate quantization** using `precision_tradeoffs`
+4. **Adjust batch size** with `auto_adjust_batch_size`
+5. **Monitor utilization** to avoid over/under-provisioning
+
+```python
+from utils.hardware import HardwareProfile, auto_adjust_batch_size
+from evaluation.hardware_profile import build_hardware_profile_table
+
+# Define hardware constraints
+hw_profile = HardwareProfile(memory_limit_mb=256, compute_budget=5000)
+
+# Optimize batch size
+optimal_batch = auto_adjust_batch_size(
+    initial_batch=128,
+    feature_count=42,
+    profile=hw_profile
+)
+
+# Profile with optimized batch
+profile = build_hardware_profile_table(
+    feature_count=42,
+    batch_size=optimal_batch,
+    stream_interval_ms=1000
+)
+
+if profile['totals']['stream_utilization'] < 0.5:
+    print("⚠ Underutilized - consider increasing batch size")
+elif profile['totals']['stream_utilization'] > 0.9:
+    print("⚠ Overutilized - reduce batch size or increase stream interval")
+```
+
+## Quantization Recommendations
+
+Based on memory constraints:
+
+```python
+profile = build_hardware_profile_table(42, 32, 1000)
+fp32_mem = profile['precision_tradeoffs']['fp32_memory_kb']
+fp16_mem = profile['precision_tradeoffs']['fp16_memory_kb']
+int8_mem = profile['precision_tradeoffs']['int8_memory_kb']
+
+if fp32_mem > 100:  # KB
+    print(f"Consider FP16 quantization: {fp32_mem:.1f} KB → {fp16_mem:.1f} KB")
+if fp32_mem > 200:
+    print(f"Consider INT8 quantization: {fp32_mem:.1f} KB → {int8_mem:.1f} KB")
+```
+
+## Edge Deployment
+
+For edge devices (Raspberry Pi, mobile, IoT):
+
+- **Small batches**: Process 1-4 samples at a time
+- **FP16 or INT8**: Reduce memory footprint
+- **Monitor cache**: Small batches reduce cache reuse
+- **Bandwidth awareness**: Memory movement often dominates latency
+
+```python
+# Edge device profile
+edge_profile = build_hardware_profile_table(
+    feature_count=42,
+    batch_size=1,  # Process one sample at a time
+    stream_interval_ms=100  # 10 Hz
+)
+
+print(f"Per-sample latency: {edge_profile['totals']['latency_ms']:.3f} ms")
+print(f"Memory: {edge_profile['precision_tradeoffs']['int8_memory_kb']:.2f} KB (INT8)")
+```

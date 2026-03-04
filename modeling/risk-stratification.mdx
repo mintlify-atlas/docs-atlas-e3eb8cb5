@@ -1,0 +1,163 @@
+---
+title: "Risk Stratification"
+description: "Categorize patients into risk bands based on predicted probabilities for clinical triage and resource allocation"
+---
+
+## Overview
+
+Risk stratification assigns patients to discrete risk categories (low, medium, high) based on predicted probabilities. This enables clinical teams to prioritize interventions and allocate resources effectively.
+
+## Risk Band Assignment
+
+The `stratify_risk()` function converts continuous probability scores into categorical risk bands.
+
+### Basic Usage
+
+```python
+from modeling.risk import stratify_risk
+
+# Get predicted probabilities from your model
+proba = risk_model.predict_proba(X_test)[:, 1]
+
+# Stratify into risk bands
+risk_df = stratify_risk(
+    probabilities=proba,
+    low_threshold=0.35,
+    high_threshold=0.7
+)
+```
+
+**Parameters:**
+- `probabilities` (pd.Series): Predicted risk probabilities (0.0 to 1.0)
+- `low_threshold` (float): Upper bound for low risk (default: 0.35)
+- `high_threshold` (float): Lower bound for high risk (default: 0.7)
+
+**Returns:** DataFrame with columns:
+- `risk_probability`: Original probability score
+- `risk_band`: Categorical assignment ("low", "medium", "high")
+
+### Example Output
+
+```python
+   risk_probability  risk_band
+0              0.23        low
+1              0.58     medium
+2              0.85       high
+3              0.42     medium
+4              0.12        low
+```
+
+## Risk Band Logic
+
+The stratification follows these rules:
+
+| Probability Range | Risk Band |
+|------------------|----------|
+| < 0.35 | Low |
+| 0.35 - 0.69 | Medium |
+| ≥ 0.70 | High |
+
+**Implementation:**
+```python
+risk_band = pd.Series("medium", index=probabilities.index, dtype="object")
+risk_band.loc[probabilities < low_threshold] = "low"
+risk_band.loc[probabilities >= high_threshold] = "high"
+```
+
+All patients start in "medium" band, then are reassigned to "low" or "high" based on thresholds.
+
+## Risk Band Summary Statistics
+
+Analyze the distribution of patients across risk categories:
+
+```python
+from modeling.risk import summarize_risk_bands
+
+summary = summarize_risk_bands(risk_df)
+```
+
+**Example Output:**
+```python
+{
+    "low_prevalence": 0.42,
+    "medium_prevalence": 0.38,
+    "high_prevalence": 0.20
+}
+```
+
+Values represent the proportion of patients in each band (sum = 1.0).
+
+## Clinical Use Cases
+
+### 1. Triage Prioritization
+
+```python
+# High-risk patients need immediate attention
+high_risk_patients = risk_df[risk_df["risk_band"] == "high"]
+print(f"Urgent cases: {len(high_risk_patients)}")
+```
+
+### 2. Resource Allocation
+
+```python
+# Assign ICU beds to high-risk patients
+for risk_band, group in risk_df.groupby("risk_band"):
+    if risk_band == "high":
+        allocate_icu_beds(group.index)
+    elif risk_band == "medium":
+        allocate_standard_beds(group.index)
+    else:
+        schedule_outpatient_followup(group.index)
+```
+
+### 3. Custom Thresholds
+
+Adjust thresholds based on hospital capacity or clinical protocols:
+
+```python
+# More conservative during high demand
+risk_df = stratify_risk(
+    probabilities=proba,
+    low_threshold=0.25,  # Lower bar for medium risk
+    high_threshold=0.60   # Lower bar for high risk
+)
+```
+
+## Complete Workflow Example
+
+```python
+from modeling.predictive import train_predictive_models, SimpleLogisticModel
+from modeling.risk import stratify_risk, summarize_risk_bands
+
+# Train risk prediction model
+feature_cols = ["age", "pain_level", "bmi", "wait_time_min"]
+artifacts = train_predictive_models(
+    df=patient_data,
+    feature_cols=feature_cols,
+    risk_target="diagnosis",
+    outcome_target="readmitted"
+)
+
+# Generate risk probabilities for new patients
+new_patients = load_new_admissions()
+X_new = prepare_features(new_patients, feature_cols)
+proba = artifacts.risk_model.predict_proba(X_new)[:, 1]
+
+# Stratify and summarize
+risk_df = stratify_risk(proba)
+summary = summarize_risk_bands(risk_df)
+
+print(f"High-risk patients: {summary['high_prevalence']:.1%}")
+print(f"Medium-risk patients: {summary['medium_prevalence']:.1%}")
+print(f"Low-risk patients: {summary['low_prevalence']:.1%}")
+```
+
+## Interpreting Prevalence Metrics
+
+- **High Prevalence > 30%**: Consider increasing capacity or adjusting thresholds
+- **Low Prevalence < 20%**: May indicate model is too conservative
+- **Balanced Distribution**: Typically indicates well-calibrated thresholds
+
+## Source Reference
+
+See `modeling/risk.py:6-25` for the complete implementation.

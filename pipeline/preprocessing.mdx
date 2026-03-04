@@ -1,0 +1,211 @@
+---
+title: Data Preprocessing
+description: Clean and normalize hospital data by handling missing values, standardizing categories, and converting data types
+---
+
+The preprocessing module transforms raw hospital data into a clean, analysis-ready format by handling missing values, standardizing categorical variables, and ensuring proper data types.
+
+## Data Cleaning
+
+The `clean_hospital_data()` function performs comprehensive data cleaning operations on the merged hospital dataset.
+
+### Function Signature
+
+```python
+def clean_hospital_data(df: pd.DataFrame) -> pd.DataFrame
+```
+
+**Parameters:**
+- `df` (pd.DataFrame): Raw hospital data from the ingestion pipeline
+
+**Returns:**
+- Cleaned DataFrame with standardized values and proper data types
+
+## Cleaning Operations
+
+The cleaning process applies several transformations:
+
+### 1. Gender Standardization
+
+Normalizes gender values to single-letter codes:
+
+```python
+clean["gender"] = clean["gender"].replace({
+    "male": "m", 
+    "female": "f", 
+    "man": "m", 
+    "woman": "f"
+})
+clean["gender"] = clean["gender"].fillna("f")
+```
+
+- Maps "male" and "man" → "m"
+- Maps "female" and "woman" → "f"
+- Fills missing values with "f"
+
+### 2. Numeric Column Imputation
+
+Fills missing values with 0 for specific numeric columns:
+
+```python
+NUMERIC_FILL_COLUMNS = ["bmi", "children", "months"]
+clean[NUMERIC_FILL_COLUMNS] = clean[NUMERIC_FILL_COLUMNS].fillna(0)
+```
+
+**Columns affected:**
+- `bmi` - Body Mass Index
+- `children` - Number of children
+- `months` - Duration in months
+
+### 3. Medical Test Results
+
+Fills missing test results with "unknown":
+
+```python
+TEST_COLUMNS = ["blood_test", "ecg", "ultrasound", "mri", "xray"]
+for col in TEST_COLUMNS:
+    clean[col] = clean[col].fillna("unknown")
+```
+
+**Test columns:**
+- `blood_test`
+- `ecg` (electrocardiogram)
+- `ultrasound`
+- `mri` (magnetic resonance imaging)
+- `xray`
+
+### 4. Diagnosis Imputation
+
+Fills missing diagnosis values:
+
+```python
+clean["diagnosis"] = clean["diagnosis"].fillna("unknown")
+```
+
+### 5. Type Conversion and Coercion
+
+Converts columns to numeric types with error handling:
+
+```python
+for col in ["age", "height", "weight", "bmi", "children", "months"]:
+    clean[col] = pd.to_numeric(clean[col], errors="coerce").fillna(0)
+```
+
+- Uses `errors="coerce"` to convert invalid values to NaN
+- Fills resulting NaN values with 0
+- Ensures all values are numeric (float or int)
+
+**Columns converted:**
+- `age`
+- `height`
+- `weight`
+- `bmi`
+- `children`
+- `months`
+
+## Usage Example
+
+```python
+from preprocessing.cleaning import clean_hospital_data
+from ingestion.loader import load_hospital_data, merge_hospital_data
+
+# Load and merge data
+datasets = load_hospital_data(data_dir)
+merged = merge_hospital_data(datasets)
+
+print(f"Before cleaning: {merged.isnull().sum().sum()} missing values")
+
+# Clean the data
+clean = clean_hospital_data(merged)
+
+print(f"After cleaning: {clean.isnull().sum().sum()} missing values")
+print(f"Gender values: {clean['gender'].unique()}")
+print(f"Data types:\n{clean.dtypes}")
+```
+
+From cli.py:52:
+
+```python
+datasets = load_hospital_data(CONFIG.data_dir)
+merged = merge_hospital_data(datasets)
+clean = clean_hospital_data(merged)
+```
+
+## Before and After Example
+
+### Raw Data
+
+```python
+   age  gender    bmi  blood_test  diagnosis
+0  45   male     28.3  positive    flu
+1  32   woman    NaN   NaN         NaN
+2  67   m        31.2  negative    diabetes
+3  "25" female   22.1  positive    healthy
+```
+
+### Cleaned Data
+
+```python
+   age  gender    bmi  blood_test  diagnosis
+0  45.0 m        28.3  positive    flu
+1  32.0 f        0.0   unknown     unknown
+2  67.0 m        31.2  negative    diabetes
+3  25.0 f        22.1  positive    healthy
+```
+
+## Pipeline Integration
+
+The cleaning function is a critical step between ingestion and feature engineering:
+
+```python
+from ingestion.loader import load_hospital_data, merge_hospital_data
+from preprocessing.cleaning import clean_hospital_data
+from feature_engineering.features import build_features
+
+# Complete pipeline
+datasets = load_hospital_data(CONFIG.data_dir)
+merged = merge_hospital_data(datasets)
+clean = clean_hospital_data(merged)  # Preprocessing step
+feat = build_features(clean)          # Ready for feature engineering
+```
+
+## Data Quality Checks
+
+After cleaning, you can verify data quality:
+
+```python
+clean = clean_hospital_data(merged)
+
+# Check for remaining missing values
+print("Missing values per column:")
+print(clean.isnull().sum())
+
+# Verify gender standardization
+print(f"\nGender values: {clean['gender'].unique()}")
+assert set(clean['gender'].unique()).issubset({'m', 'f'})
+
+# Verify numeric types
+numeric_cols = ['age', 'height', 'weight', 'bmi', 'children', 'months']
+for col in numeric_cols:
+    assert pd.api.types.is_numeric_dtype(clean[col]), f"{col} is not numeric"
+
+print("\nAll quality checks passed!")
+```
+
+## Constants Reference
+
+The module defines these configuration constants:
+
+```python
+NUMERIC_FILL_COLUMNS = ["bmi", "children", "months"]
+TEST_COLUMNS = ["blood_test", "ecg", "ultrasound", "mri", "xray"]
+```
+
+These can be imported for consistency in downstream analysis:
+
+```python
+from preprocessing.cleaning import NUMERIC_FILL_COLUMNS, TEST_COLUMNS
+
+print(f"Numeric columns filled with 0: {NUMERIC_FILL_COLUMNS}")
+print(f"Test result columns: {TEST_COLUMNS}")
+```

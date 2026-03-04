@@ -1,0 +1,259 @@
+---
+title: "Hardware Utilities API"
+description: "API reference for hardware constraint management and batch size optimization"
+---
+
+## Overview
+
+The hardware utilities module provides tools for managing hardware constraints, estimating memory usage, and automatically adjusting batch sizes based on available resources.
+
+## Data Classes
+
+### HardwareProfile
+
+Defines hardware resource constraints for model execution.
+
+```python
+@dataclass
+class HardwareProfile:
+    memory_limit_mb: int
+    compute_budget: int
+```
+
+<ParamField path="memory_limit_mb" type="int" required>
+  Maximum available memory in megabytes
+</ParamField>
+
+<ParamField path="compute_budget" type="int" required>
+  Maximum number of operations that can be performed. Represents computational capacity
+</ParamField>
+
+**Example:**
+```python
+from utils.hardware import HardwareProfile
+
+# Define constraints for edge device
+edge_profile = HardwareProfile(
+    memory_limit_mb=128,
+    compute_budget=5000
+)
+
+# Define constraints for cloud deployment
+cloud_profile = HardwareProfile(
+    memory_limit_mb=2048,
+    compute_budget=100000
+)
+```
+
+## Functions
+
+### estimate_batch_memory_mb
+
+Estimates the memory required for a batch of data.
+
+```python
+def estimate_batch_memory_mb(
+    batch_size: int,
+    feature_count: int,
+    bytes_per_feature: int = 8
+) -> float
+```
+
+<ParamField path="batch_size" type="int" required>
+  Number of samples in the batch
+</ParamField>
+
+<ParamField path="feature_count" type="int" required>
+  Number of features per sample
+</ParamField>
+
+<ParamField path="bytes_per_feature" type="int" default="8">
+  Number of bytes per feature value (8 for float64/int64, 4 for float32/int32)
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Estimated memory usage in megabytes
+</ResponseField>
+
+**Calculation:**
+```
+memory_mb = (batch_size × feature_count × bytes_per_feature) / (1024 × 1024)
+```
+
+**Example:**
+```python
+from utils.hardware import estimate_batch_memory_mb
+
+# Estimate memory for 32 samples with 100 features (float64)
+memory_mb = estimate_batch_memory_mb(
+    batch_size=32,
+    feature_count=100,
+    bytes_per_feature=8
+)
+print(f"Estimated memory: {memory_mb:.2f} MB")
+
+# Estimate for float32 precision
+memory_mb_fp32 = estimate_batch_memory_mb(
+    batch_size=32,
+    feature_count=100,
+    bytes_per_feature=4
+)
+print(f"Memory with FP32: {memory_mb_fp32:.2f} MB")
+```
+
+### auto_adjust_batch_size
+
+Automatically adjusts batch size to fit within hardware memory constraints.
+
+```python
+def auto_adjust_batch_size(
+    initial_batch: int,
+    feature_count: int,
+    profile: HardwareProfile
+) -> int
+```
+
+<ParamField path="initial_batch" type="int" required>
+  Starting batch size to adjust downward if necessary
+</ParamField>
+
+<ParamField path="feature_count" type="int" required>
+  Number of features in the data
+</ParamField>
+
+<ParamField path="profile" type="HardwareProfile" required>
+  Hardware constraints to respect
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Adjusted batch size that fits within memory constraints. Minimum return value is 1
+</ResponseField>
+
+**Algorithm:**
+1. Start with `initial_batch`
+2. While estimated memory exceeds `profile.memory_limit_mb`:
+   - Divide batch size by 2 (integer division)
+   - Stop if batch size reaches 1
+3. Return the largest batch size that fits in memory
+
+**Example:**
+```python
+from utils.hardware import HardwareProfile, auto_adjust_batch_size
+
+profile = HardwareProfile(
+    memory_limit_mb=256,
+    compute_budget=10000
+)
+
+# Try to use batch size of 64, but adjust if needed
+adjusted_batch = auto_adjust_batch_size(
+    initial_batch=64,
+    feature_count=100,
+    profile=profile
+)
+print(f"Adjusted batch size: {adjusted_batch}")
+
+# With more features, batch size may be reduced further
+adjusted_batch_large = auto_adjust_batch_size(
+    initial_batch=64,
+    feature_count=1000,
+    profile=profile
+)
+print(f"Batch size with 1000 features: {adjusted_batch_large}")
+```
+
+### compute_utilization
+
+Calculates the ratio of operations performed to available compute budget.
+
+```python
+def compute_utilization(
+    operations: int,
+    profile: HardwareProfile
+) -> float
+```
+
+<ParamField path="operations" type="int" required>
+  Number of operations performed
+</ParamField>
+
+<ParamField path="profile" type="HardwareProfile" required>
+  Hardware profile containing compute budget
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Utilization ratio capped at 1.0. Values closer to 1.0 indicate higher compute utilization
+</ResponseField>
+
+**Calculation:**
+```
+utilization = min(1.0, operations / max(compute_budget, 1))
+```
+
+**Example:**
+```python
+from utils.hardware import HardwareProfile, compute_utilization
+
+profile = HardwareProfile(
+    memory_limit_mb=256,
+    compute_budget=10000
+)
+
+# Calculate utilization for different workloads
+util_light = compute_utilization(operations=5000, profile=profile)
+print(f"Light workload utilization: {util_light:.1%}")
+
+util_heavy = compute_utilization(operations=15000, profile=profile)
+print(f"Heavy workload utilization: {util_heavy:.1%}")  # Capped at 100%
+
+# For a batch with features
+batch_size = 32
+feature_count = 100
+operations = batch_size * feature_count
+util = compute_utilization(operations=operations, profile=profile)
+print(f"Batch utilization: {util:.1%}")
+```
+
+## Complete Workflow Example
+
+```python
+from utils.hardware import (
+    HardwareProfile,
+    estimate_batch_memory_mb,
+    auto_adjust_batch_size,
+    compute_utilization
+)
+
+# Define hardware constraints (e.g., edge device)
+profile = HardwareProfile(
+    memory_limit_mb=128,
+    compute_budget=5000
+)
+
+# Dataset characteristics
+feature_count = 50
+initial_batch = 64
+
+# Check if initial batch fits
+estimated_memory = estimate_batch_memory_mb(
+    batch_size=initial_batch,
+    feature_count=feature_count
+)
+print(f"Initial memory estimate: {estimated_memory:.2f} MB")
+
+# Auto-adjust if needed
+final_batch = auto_adjust_batch_size(
+    initial_batch=initial_batch,
+    feature_count=feature_count,
+    profile=profile
+)
+print(f"Adjusted batch size: {final_batch}")
+
+# Calculate utilization
+operations = final_batch * feature_count
+util = compute_utilization(operations=operations, profile=profile)
+print(f"Compute utilization: {util:.1%}")
+
+if util < 0.5:
+    print("Warning: Low compute utilization. Consider increasing batch size or feature count.")
+```

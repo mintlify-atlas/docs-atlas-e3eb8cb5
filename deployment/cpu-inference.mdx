@@ -1,0 +1,130 @@
+---
+title: CPU Inference
+description: Execute model inference on CPU with latency tracking and probability statistics
+---
+
+## Overview
+
+The CPU inference module provides a lightweight wrapper for running model predictions on CPU hardware with built-in performance monitoring. It tracks inference latency and computes probability distribution statistics for model outputs.
+
+## Function Signature
+
+```python
+def run_cpu_inference(model, X: pd.DataFrame) -> dict[str, float]:
+    """
+    Run inference on CPU and return timing and probability metrics.
+    
+    Args:
+        model: Trained model with predict_proba method
+        X: Input features as pandas DataFrame
+    
+    Returns:
+        Dictionary containing:
+        - inference_latency_ms: Time taken for inference in milliseconds
+        - output_mean_probability: Mean of predicted probabilities
+        - output_std_probability: Standard deviation of predicted probabilities
+    """
+```
+
+**Source**: `deployment/cpu_inference.py:7`
+
+## Usage Example
+
+```python
+import pandas as pd
+from deployment.cpu_inference import run_cpu_inference
+
+# Load your trained model
+model = load_trained_model()
+
+# Prepare input data
+X_test = pd.DataFrame({
+    'age': [45, 67, 52],
+    'blood_pressure': [120, 140, 135],
+    'heart_rate': [72, 88, 76]
+})
+
+# Run inference
+results = run_cpu_inference(model, X_test)
+
+print(f"Latency: {results['inference_latency_ms']:.2f} ms")
+print(f"Mean probability: {results['output_mean_probability']:.3f}")
+print(f"Std probability: {results['output_std_probability']:.3f}")
+```
+
+## Returned Metrics
+
+### inference_latency_ms
+
+Measures the wall-clock time from prediction start to completion using high-precision `time.perf_counter()`. This metric is critical for:
+
+- SLA compliance in production deployments
+- Identifying performance regressions
+- Capacity planning for concurrent requests
+
+### output_mean_probability
+
+The mean of predicted probabilities for the positive class (index 1). Computed as `probs.mean()` where `probs = model.predict_proba(X)[:, 1]`.
+
+Useful for:
+- Detecting distribution shift in production data
+- Monitoring model calibration over time
+- Identifying batch-level anomalies
+
+### output_std_probability
+
+Standard deviation of predicted probabilities. High variance may indicate:
+- Diverse risk profiles in the input batch
+- Model uncertainty on out-of-distribution samples
+- Potential calibration issues
+
+## Performance Considerations
+
+**Batch Size**: Larger batches may improve throughput but increase latency per request. Profile with your expected workload.
+
+**Model Type**: Tree-based models (Random Forest, XGBoost) typically have different CPU utilization patterns than linear models.
+
+**Feature Count**: Inference latency scales roughly linearly with the number of input features for most model types.
+
+## Implementation Details
+
+The function uses:
+- `time.perf_counter()` for nanosecond-precision timing
+- Probability extraction for binary classification (class index 1)
+- Type-safe float conversion for JSON serialization
+
+Source code from `deployment/cpu_inference.py:7-15`:
+
+```python
+def run_cpu_inference(model, X: pd.DataFrame) -> dict[str, float]:
+    start = time.perf_counter()
+    probs = model.predict_proba(X)[:, 1]
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    return {
+        "inference_latency_ms": elapsed_ms,
+        "output_mean_probability": float(probs.mean()),
+        "output_std_probability": float(probs.std()),
+    }
+```
+
+## Integration with Monitoring
+
+CPU inference results can be combined with the monitoring module to track model performance in production:
+
+```python
+from deployment.cpu_inference import run_cpu_inference
+from deployment.monitoring import build_monitoring_summary
+
+# Run inference
+results = run_cpu_inference(model, X_batch)
+
+# Generate alerts based on threshold
+alert_flags = risk_probs > 0.75
+
+# Build monitoring summary
+summary = build_monitoring_summary(
+    alert_flags=alert_flags,
+    risk_probabilities=risk_probs,
+    stream_latency_ms_per_row=results['inference_latency_ms'] / len(X_batch)
+)
+```

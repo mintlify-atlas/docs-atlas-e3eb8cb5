@@ -1,0 +1,111 @@
+---
+title: "Streaming API"
+description: "Real-time data streaming and processing utilities for hospital data analysis"
+---
+
+## StreamMetrics
+
+```python
+@dataclass
+class StreamMetrics:
+    latency_ms: float
+    throughput_rows_per_s: float
+```
+
+Dataclass for storing streaming performance metrics.
+
+<ParamField path="latency_ms" type="float">
+  Average latency in milliseconds per row processed
+</ParamField>
+
+<ParamField path="throughput_rows_per_s" type="float">
+  Number of rows processed per second
+</ParamField>
+
+---
+
+## stream_dataframe
+
+```python
+def stream_dataframe(df: pd.DataFrame, chunk_size: int)
+```
+
+Generator function that yields chunks of a DataFrame for streaming processing.
+
+<ParamField path="df" type="pd.DataFrame" required>
+  The DataFrame to stream in chunks
+</ParamField>
+
+<ParamField path="chunk_size" type="int" required>
+  Number of rows per chunk
+</ParamField>
+
+<ResponseField name="return" type="Generator[pd.DataFrame]">
+  Generator yielding DataFrame chunks of size `chunk_size`
+</ResponseField>
+
+---
+
+## process_stream
+
+```python
+def process_stream(
+    df: pd.DataFrame,
+    chunk_size: int,
+    process_fn
+) -> tuple[pd.DataFrame, StreamMetrics]
+```
+
+Processes a DataFrame in streaming chunks and returns results with performance metrics.
+
+<ParamField path="df" type="pd.DataFrame" required>
+  The DataFrame to process
+</ParamField>
+
+<ParamField path="chunk_size" type="int" required>
+  Number of rows per chunk for streaming
+</ParamField>
+
+<ParamField path="process_fn" type="Callable" required>
+  Function to apply to each chunk. Should accept a DataFrame and return a DataFrame
+</ParamField>
+
+<ResponseField name="return" type="tuple[pd.DataFrame, StreamMetrics]">
+  A tuple containing:
+  - Concatenated DataFrame with all processed results
+  - StreamMetrics object with performance statistics
+</ResponseField>
+
+---
+
+## compare_batch_vs_streaming
+
+```python
+def compare_batch_vs_streaming(
+    df: pd.DataFrame,
+    process_fn,
+    chunk_size: int
+) -> dict[str, float]
+```
+
+Compares performance between batch and streaming processing modes.
+
+<ParamField path="df" type="pd.DataFrame" required>
+  The DataFrame to process in both modes
+</ParamField>
+
+<ParamField path="process_fn" type="Callable" required>
+  Function to apply in both batch and streaming modes
+</ParamField>
+
+<ParamField path="chunk_size" type="int" required>
+  Chunk size for streaming mode
+</ParamField>
+
+<ResponseField name="return" type="dict[str, float]">
+  Dictionary containing performance comparison metrics:
+  - `batch_time_s`: Total time for batch processing in seconds
+  - `stream_time_s`: Total time for streaming processing in seconds
+  - `stream_latency_ms_per_row`: Average latency per row in milliseconds
+  - `stream_throughput_rows_per_s`: Rows processed per second in streaming mode
+</ResponseField>

@@ -1,0 +1,68 @@
+---
+title: "ONNX Export API"
+description: "Export scikit-learn pipelines to ONNX format for cross-platform deployment"
+---
+
+## export_pipeline_to_onnx
+
+```python
+def export_pipeline_to_onnx(
+    pipeline,
+    output_path: Path,
+    n_features: int
+) -> bool
+```
+
+Exports a scikit-learn pipeline to ONNX format for deployment in various runtime environments.
+
+<ParamField path="pipeline" type="sklearn.pipeline.Pipeline" required>
+  Trained scikit-learn pipeline to export. Should contain preprocessing steps and model
+</ParamField>
+
+<ParamField path="output_path" type="Path" required>
+  File path where the ONNX model will be saved. Parent directories will be created if they don't exist
+</ParamField>
+
+<ParamField path="n_features" type="int" required>
+  Number of input features expected by the pipeline
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  - `True` if export was successful
+  - `False` if an exception occurred during export
+</ResponseField>
+
+### Dependencies
+
+This function requires the following packages:
+- `skl2onnx`: For converting scikit-learn models to ONNX
+- `onnx`: ONNX runtime dependencies
+
+### Example
+
+```python
+from deployment.onnx_export import export_pipeline_to_onnx
+from pathlib import Path
+from sklearn.pipeline import Pipeline
+
+# Assume pipeline is already trained
+pipeline = Pipeline([...])
+
+success = export_pipeline_to_onnx(
+    pipeline=pipeline,
+    output_path=Path("models/risk_model.onnx"),
+    n_features=15
+)
+
+if success:
+    print("Model exported successfully")
+else:
+    print("Export failed")
+```
+
+### Use Cases
+
+- **Cross-Platform Deployment**: Deploy models to various platforms (web, mobile, embedded)
+- **Performance Optimization**: Use ONNX Runtime for faster inference
+- **Framework Interoperability**: Run scikit-learn models in non-Python environments
+- **Model Serving**: Deploy models to production inference servers

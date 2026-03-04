@@ -1,0 +1,278 @@
+---
+title: Feature Engineering
+description: Build derived features from cleaned hospital data including age ranges, adult flags, and BMI risk categories
+---
+
+The feature engineering module creates new features from cleaned hospital data to improve model performance and enable better analysis. It transforms continuous variables into categorical ranges and computes derived indicators.
+
+## Building Features
+
+The `build_features()` function creates three new features from the cleaned dataset.
+
+### Function Signature
+
+```python
+def build_features(df: pd.DataFrame) -> pd.DataFrame
+```
+
+**Parameters:**
+- `df` (pd.DataFrame): Cleaned hospital data from the preprocessing pipeline
+
+**Returns:**
+- DataFrame with original columns plus new engineered features
+
+## Engineered Features
+
+### 1. Age Range
+
+Categorizes patients into age groups using `pd.cut()`:
+
+```python
+AGE_BINS = [0, 15, 35, 55, 70, 80]
+AGE_LABELS = ["0-15", "15-35", "35-55", "55-70", "70-80"]
+
+feat["age_range"] = pd.cut(
+    feat["age"], 
+    bins=AGE_BINS, 
+    labels=AGE_LABELS, 
+    right=False
+)
+```
+
+**Age groups:**
+- `0-15` - Children and adolescents
+- `15-35` - Young adults
+- `35-55` - Middle-aged adults
+- `55-70` - Older adults
+- `70-80` - Senior adults
+
+**Parameters:**
+- `right=False` - Left-inclusive bins (e.g., 15 ≤ age < 35)
+
+**Example:**
+```python
+age = 42
+age_range = "35-55"  # 35 <= 42 < 55
+```
+
+### 2. Adult Indicator
+
+Binary flag indicating whether the patient is an adult (≥18 years):
+
+```python
+feat["is_adult"] = (feat["age"] >= 18).astype(int)
+```
+
+**Values:**
+- `1` - Adult (age ≥ 18)
+- `0` - Minor (age < 18)
+
+**Example:**
+```python
+age = 16 → is_adult = 0
+age = 18 → is_adult = 1
+age = 45 → is_adult = 1
+```
+
+### 3. BMI Risk Category
+
+Categorizes Body Mass Index into risk levels based on standard health guidelines:
+
+```python
+feat["bmi_risk"] = pd.cut(
+    feat["bmi"], 
+    bins=[-1, 18.5, 25, 30, 100], 
+    labels=[0, 1, 2, 3]
+).astype(float)
+feat["bmi_risk"] = feat["bmi_risk"].fillna(0)
+```
+
+**Risk levels:**
+- `0` - Underweight (BMI < 18.5) or missing
+- `1` - Normal weight (18.5 ≤ BMI < 25)
+- `2` - Overweight (25 ≤ BMI < 30)
+- `3` - Obese (BMI ≥ 30)
+
+**BMI ranges:**
+
+| BMI Range | Risk Level | Category |
+|-----------|------------|----------|
+| < 18.5 | 0 | Underweight |
+| 18.5 - 24.9 | 1 | Normal |
+| 25 - 29.9 | 2 | Overweight |
+| ≥ 30 | 3 | Obese |
+
+**Example:**
+```python
+bmi = 22.3 → bmi_risk = 1.0  # Normal
+bmi = 27.8 → bmi_risk = 2.0  # Overweight
+bmi = 31.5 → bmi_risk = 3.0  # Obese
+bmi = 0.0  → bmi_risk = 0.0  # Missing (filled with 0)
+```
+
+## Usage Example
+
+```python
+from feature_engineering.features import build_features
+from preprocessing.cleaning import clean_hospital_data
+from ingestion.loader import load_hospital_data, merge_hospital_data
+
+# Complete pipeline
+datasets = load_hospital_data(data_dir)
+merged = merge_hospital_data(datasets)
+clean = clean_hospital_data(merged)
+
+print(f"Before feature engineering: {clean.shape[1]} columns")
+
+# Build features
+feat = build_features(clean)
+
+print(f"After feature engineering: {feat.shape[1]} columns")
+print(f"New features: {['age_range', 'is_adult', 'bmi_risk']}")
+```
+
+From cli.py:50-53:
+
+```python
+datasets = load_hospital_data(CONFIG.data_dir)
+merged = merge_hospital_data(datasets)
+clean = clean_hospital_data(merged)
+feat = build_features(clean)
+```
+
+## Feature Output Example
+
+### Input (Cleaned Data)
+
+```python
+   age  gender    bmi  height  weight
+0  45   m        28.3  175     87
+1  16   f        19.2  162     50
+2  67   m        31.2  170     90
+3  25   f        22.1  168     62
+```
+
+### Output (With Engineered Features)
+
+```python
+   age  gender    bmi  height  weight  age_range  is_adult  bmi_risk
+0  45   m        28.3  175     87      35-55      1         2.0
+1  16   f        19.2  162     50      15-35      0         1.0
+2  67   m        31.2  170     90      55-70      1         3.0
+3  25   f        22.1  168     62      15-35      1         1.0
+```
+
+## Pipeline Integration
+
+Feature engineering connects cleaning to modeling:
+
+```python
+from ingestion.loader import load_hospital_data, merge_hospital_data
+from preprocessing.cleaning import clean_hospital_data
+from feature_engineering.features import build_features
+from modeling.predictive import train_predictive_models
+
+# Full pipeline
+datasets = load_hospital_data(CONFIG.data_dir)
+merged = merge_hospital_data(datasets)
+clean = clean_hospital_data(merged)
+feat = build_features(clean)  # Feature engineering step
+
+# Use features for modeling
+artifacts = train_predictive_models(
+    feat, 
+    CONFIG.feature_columns, 
+    CONFIG.target_risk, 
+    CONFIG.target_outcome
+)
+```
+
+## Feature Analysis
+
+Analyze the distribution of engineered features:
+
+```python
+feat = build_features(clean)
+
+# Age range distribution
+print("Age Range Distribution:")
+print(feat["age_range"].value_counts().sort_index())
+
+# Adult vs minor counts
+print("\nAdult Status:")
+print(f"Adults: {feat['is_adult'].sum()}")
+print(f"Minors: {(feat['is_adult'] == 0).sum()}")
+
+# BMI risk distribution
+print("\nBMI Risk Distribution:")
+print(feat["bmi_risk"].value_counts().sort_index())
+```
+
+Example output:
+
+```
+Age Range Distribution:
+0-15      120
+15-35     450
+35-55     380
+55-70     210
+70-80      40
+
+Adult Status:
+Adults: 1080
+Minors: 120
+
+BMI Risk Distribution:
+0.0    150
+1.0    520
+2.0    380
+3.0    150
+```
+
+## Constants Reference
+
+The module defines these configuration constants:
+
+```python
+AGE_BINS = [0, 15, 35, 55, 70, 80]
+AGE_LABELS = ["0-15", "15-35", "35-55", "55-70", "70-80"]
+```
+
+Import them for consistency in analysis:
+
+```python
+from feature_engineering.features import AGE_BINS, AGE_LABELS
+
+print(f"Age bins: {AGE_BINS}")
+print(f"Age labels: {AGE_LABELS}")
+```
+
+## Feature Selection for Modeling
+
+The engineered features can be used alongside original columns:
+
+```python
+# Original features
+original_features = ['age', 'height', 'weight', 'bmi', 'children', 'months']
+
+# Engineered features
+engineered_features = ['age_range', 'is_adult', 'bmi_risk']
+
+# Combined feature set
+all_features = original_features + engineered_features
+
+# Select features for modeling
+X = feat[all_features]
+y = feat['diagnosis']
+```
+
+From cli.py:55-59:
+
+```python
+artifacts = train_predictive_models(
+    feat, 
+    CONFIG.feature_columns,  # Configured feature list
+    CONFIG.target_risk, 
+    CONFIG.target_outcome
+)
+```

@@ -1,0 +1,169 @@
+---
+title: "CLI Reference"
+description: "Command-line interface for the Hospital Data Analysis Platform"
+---
+
+## Overview
+
+The Hospital Data Analysis Platform provides a command-line interface for running the complete analysis pipeline, generating dataset manifests, and executing early warning experiments.
+
+## Commands
+
+### run
+
+Executes the complete hospital data analysis pipeline including data ingestion, preprocessing, feature engineering, model training, anomaly detection, and deployment monitoring.
+
+```bash
+python cli.py run
+```
+
+**Output**: JSON object containing all pipeline results including:
+- Reproducibility context
+- Predictive model metrics
+- Anomaly detection alerts
+- Detection latency statistics
+- Streaming performance metrics
+- Hardware utilization
+- CPU inference statistics
+- ONNX export status
+- Benchmark results
+- Latency-accuracy tradeoff
+- Energy consumption metrics
+- Hardware profile
+- Risk modeling summary
+- Deployment monitoring
+- Early warning experiment results
+- Dataset manifest information
+
+**Example Output**:
+```json
+{
+  "reproducibility": {...},
+  "predictive_metrics": {...},
+  "anomaly_alerts": {...},
+  "detection_latency_s": 1.23,
+  "streaming": {...},
+  "hardware": {
+    "adjusted_batch_size": 64,
+    "compute_utilization": 0.85
+  },
+  "cpu_inference": {...},
+  "onnx_exported": true,
+  "benchmark": {...},
+  "dataset_manifest_files": 3
+}
+```
+
+### manifest
+
+Generates a versioned manifest of all CSV files in the data directory with SHA-256 checksums and file sizes.
+
+```bash
+python cli.py manifest
+```
+
+**Output**: JSON manifest containing dataset directory path and file metadata.
+
+**Example Output**:
+```json
+{
+  "dataset_dir": "/path/to/data",
+  "files": [
+    {
+      "name": "general.csv",
+      "sha256": "abc123...",
+      "size": 1048576
+    },
+    {
+      "name": "prenatal.csv",
+      "sha256": "def456...",
+      "size": 524288
+    },
+    {
+      "name": "sports.csv",
+      "sha256": "ghi789...",
+      "size": 786432
+    }
+  ]
+}
+```
+
+### early-warning-experiment
+
+Runs a comprehensive early warning system experiment across multiple hardware constraint scenarios (memory limits, compute budgets, and streaming intervals).
+
+```bash
+python cli.py early-warning-experiment
+```
+
+**Output**: JSON object containing experiment summary, benchmarks, and artifact paths.
+
+**Example Output**:
+```json
+{
+  "summary": {
+    "scenario_count": 27,
+    "avg_detection_latency_s": 2.45,
+    "avg_prediction_accuracy": 0.89,
+    "avg_false_positive_rate": 0.12
+  },
+  "benchmark": {
+    "detection_latency_s": {...},
+    "prediction_accuracy": {...},
+    "false_positive_rate": {...},
+    "detection_quality": {...}
+  },
+  "artifacts": [
+    "/path/to/output/scenario_1.json",
+    "/path/to/output/scenario_2.json"
+  ]
+}
+```
+
+## Pipeline Workflow
+
+When running the `run` command, the following steps are executed:
+
+1. **Data Ingestion**: Load hospital data from CSV files (general, prenatal, sports)
+2. **Data Merging**: Align and merge datasets with consistent column schemas
+3. **Data Cleaning**: Handle missing values, standardize formats, convert data types
+4. **Feature Engineering**: Build age ranges, adult indicators, and BMI risk categories
+5. **Model Training**: Train predictive models for risk and outcome prediction
+6. **Model Evaluation**: Compute accuracy, precision, recall, and other metrics
+7. **Anomaly Detection**: Detect outliers and anomalies in patient data
+8. **Early Warning Simulation**: Generate early warning alerts based on anomaly scores
+9. **Detection Latency Evaluation**: Measure time to detect synthetic events
+10. **Batch vs. Streaming Comparison**: Analyze performance differences
+11. **Hardware Profiling**: Auto-adjust batch sizes and compute utilization
+12. **CPU Inference**: Measure inference latency on CPU
+13. **ONNX Export**: Export trained model to ONNX format for deployment
+14. **Risk Stratification**: Categorize patients into risk bands
+15. **Streaming Inference**: Score records in streaming mode
+16. **Deployment Monitoring**: Build monitoring summary with alerts
+17. **Benchmarking**: Run repeated benchmarks with confidence intervals
+18. **Tradeoff Analysis**: Compute latency-accuracy tradeoffs
+19. **Energy Analysis**: Compare energy consumption across precision levels
+20. **Hardware Experiments**: Test early warning under various constraints
+21. **Manifest Creation**: Generate dataset version manifest
+22. **Logging**: Save all results to experiment log
+
+## Configuration
+
+All commands use settings from the `config.py` module, which provides:
+
+- `data_dir`: Directory containing input CSV files
+- `output_dir`: Directory for output artifacts
+- `random_seed`: Seed for reproducibility
+- `feature_columns`: List of feature column names
+- `target_risk`: Target column for risk prediction
+- `target_outcome`: Target column for outcome prediction
+- `stream_chunk_size`: Chunk size for streaming processing
+- `benchmark_runs`: Number of benchmark iterations
+- `confidence_level`: Confidence level for statistics
+- `experiment_memory_limits_mb`: Memory limits for experiments
+- `experiment_compute_budgets`: Compute budgets for experiments
+- `experiment_stream_speeds_ms`: Streaming interval speeds for experiments
+
+## Exit Codes
+
+All commands exit with status code 0 on success. Errors will raise exceptions with descriptive messages.

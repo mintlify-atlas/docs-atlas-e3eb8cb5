@@ -1,0 +1,244 @@
+---
+title: "Model Evaluation"
+description: "Assess predictive model performance using accuracy, F1 score, AUC, and latency metrics"
+---
+
+## Overview
+
+The evaluation module provides metrics to assess both prediction accuracy and computational efficiency of models in the Hospital Data Analysis Platform.
+
+## Core Evaluation Metrics
+
+When training predictive models, the system automatically computes multiple performance metrics.
+
+### Accuracy
+
+Proportion of correct predictions:
+
+```python
+accuracy = (true_positives + true_negatives) / total_predictions
+```
+
+**Interpretation:**
+- **> 0.80**: Good performance for balanced datasets
+- **0.70 - 0.80**: Acceptable, may need improvement
+- **< 0.70**: Poor performance, investigate feature engineering or model selection
+
+**Example Results:**
+```python
+"risk_accuracy": 0.847  # 84.7% of risk predictions are correct
+"outcome_accuracy": 0.782  # 78.2% of outcome predictions are correct
+```
+
+**Limitation:** Can be misleading with imbalanced classes (e.g., if 95% of patients are low-risk, predicting "low" for everyone yields 95% accuracy).
+
+### F1 Score
+
+Harmonic mean of precision and recall:
+
+```python
+precision = true_positives / (true_positives + false_positives)
+recall = true_positives / (true_positives + false_negatives)
+f1 = 2 * precision * recall / (precision + recall)
+```
+
+**Why it matters:**
+- Balances false positives and false negatives
+- More robust than accuracy for imbalanced datasets
+- Critical when both types of errors have clinical consequences
+
+**Example Results:**
+```python
+"risk_f1": 0.723  # Good balance of precision/recall for risk prediction
+"outcome_f1": 0.654  # Moderate performance for outcome prediction
+```
+
+**Interpretation:**
+- **> 0.70**: Strong performance
+- **0.50 - 0.70**: Moderate performance
+- **< 0.50**: Poor discrimination
+
+**Implementation:**
+```python
+def _f1(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    tp = float(((y_true == 1) & (y_pred == 1)).sum())
+    fp = float(((y_true == 0) & (y_pred == 1)).sum())
+    fn = float(((y_true == 1) & (y_pred == 0)).sum())
+    if tp == 0:
+        return 0.0
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    return 2 * precision * recall / (precision + recall)
+```
+
+### AUC (Area Under ROC Curve)
+
+Measures the model's ability to discriminate between classes across all thresholds:
+
+```python
+# Higher scores = better separation of positive/negative classes
+auc = area_under_curve(true_positive_rate, false_positive_rate)
+```
+
+**Example Results:**
+```python
+"risk_auc": 0.891  # Excellent discrimination for risk prediction
+"outcome_auc": 0.812  # Good discrimination for outcome prediction
+```
+
+**Interpretation:**
+- **1.0**: Perfect classifier
+- **0.90 - 1.0**: Excellent
+- **0.80 - 0.90**: Good
+- **0.70 - 0.80**: Fair
+- **0.50 - 0.70**: Poor
+- **0.5**: Random guessing (no better than coin flip)
+
+**Implementation:**
+```python
+def _auc(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    # Sort by predicted probability (descending)
+    order = np.argsort(y_score)[::-1]
+    y_sorted = y_true[order]
+    
+    n_pos = int((y_sorted == 1).sum())
+    n_neg = len(y_sorted) - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return 0.5
+    
+    # Cumulative true/false positives
+    tps = np.cumsum(y_sorted == 1)
+    fps = np.cumsum(y_sorted == 0)
+    
+    # Compute ROC curve
+    tpr = np.concatenate(([0.0], tps / n_pos))
+    fpr = np.concatenate(([0.0], fps / n_neg))
+    
+    # Integrate to get area
+    return float(integrate(tpr, fpr))
+```
+
+**Why it's valuable:**
+- Threshold-independent (evaluates model across all possible thresholds)
+- Robust to class imbalance
+- Clinically meaningful: probability that a random high-risk patient scores higher than a random low-risk patient
+
+## Complete Evaluation Example
+
+```python
+from modeling.predictive import train_predictive_models, evaluate_predictive_models
+
+# Train models
+feature_cols = ["age", "pain_level", "bmi", "wait_time_min"]
+artifacts = train_predictive_models(
+    df=patient_data,
+    feature_cols=feature_cols,
+    risk_target="diagnosis",
+    outcome_target="readmitted"
+)
+
+# Evaluate performance
+metrics = evaluate_predictive_models(artifacts)
+
+print("=== Risk Prediction Performance ===")
+print(f"Accuracy: {metrics['risk_accuracy']:.3f}")
+print(f"F1 Score: {metrics['risk_f1']:.3f}")
+print(f"AUC: {metrics['risk_auc']:.3f}")
+
+print("\n=== Outcome Prediction Performance ===")
+print(f"Accuracy: {metrics['outcome_accuracy']:.3f}")
+print(f"F1 Score: {metrics['outcome_f1']:.3f}")
+print(f"AUC: {metrics['outcome_auc']:.3f}")
+
+print(f"\nEvaluated on {int(metrics['sample_count'])} test samples")
+```
+
+**Sample Output:**
+```
+=== Risk Prediction Performance ===
+Accuracy: 0.847
+F1 Score: 0.723
+AUC: 0.891
+
+=== Outcome Prediction Performance ===
+Accuracy: 0.782
+F1 Score: 0.654
+AUC: 0.812
+
+Evaluated on 250 test samples
+```
+
+## Latency-Accuracy Tradeoff
+
+For real-time systems, balance prediction accuracy against computational speed:
+
+```python
+from evaluation.metrics import latency_accuracy_tradeoff
+
+# Higher is better (accuracy per millisecond)
+score = latency_accuracy_tradeoff(accuracy=0.85, latency_ms=120)
+print(f"Efficiency score: {score:.6f}")  # 0.007083
+```
+
+**Parameters:**
+- `accuracy` (float): Model accuracy (0.0 to 1.0)
+- `latency_ms` (float): Prediction latency in milliseconds
+
+**Returns:** Accuracy divided by latency (higher = better efficiency)
+
+**Use case:**
+```python
+# Compare two models
+model_a_score = latency_accuracy_tradeoff(0.87, 150)  # 0.0058
+model_b_score = latency_accuracy_tradeoff(0.82, 90)   # 0.0091
+
+if model_b_score > model_a_score:
+    print("Model B offers better accuracy/latency tradeoff")
+```
+
+## Evaluation Results Dictionary
+
+The `evaluate_predictive_models()` function returns a comprehensive dictionary:
+
+```python
+{
+    "risk_accuracy": float,      # Classification accuracy for risk model
+    "risk_f1": float,            # F1 score for risk model
+    "risk_auc": float,           # AUC-ROC for risk model
+    "outcome_accuracy": float,   # Classification accuracy for outcome model
+    "outcome_f1": float,         # F1 score for outcome model
+    "outcome_auc": float,        # AUC-ROC for outcome model
+    "sample_count": float        # Number of test samples evaluated
+}
+```
+
+## Choosing the Right Metric
+
+### Use Accuracy When:
+- Classes are balanced (roughly equal positive/negative cases)
+- False positives and false negatives have equal cost
+- Simple interpretation is needed
+
+### Use F1 Score When:
+- Classes are imbalanced
+- Both precision and recall matter
+- Need to balance false alarms vs. missed cases
+
+### Use AUC When:
+- Evaluating overall discrimination ability
+- Comparing models with different thresholds
+- Class imbalance is present
+- Need threshold-independent metric
+
+### Use Latency Tradeoff When:
+- Deploying to production systems
+- Real-time predictions are required
+- Computational resources are constrained
+
+## Source References
+
+- Accuracy implementation: `modeling/predictive.py:44-45`
+- F1 score implementation: `modeling/predictive.py:48-56`
+- AUC implementation: `modeling/predictive.py:59-74`
+- Evaluation function: `modeling/predictive.py:118-135`
+- Latency tradeoff: `evaluation/metrics.py:4-5`

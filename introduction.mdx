@@ -1,0 +1,120 @@
+---
+title: Introduction
+description: Hardware-aware early warning and predictive analytics for hospital data
+---
+
+## Overview
+
+The Hospital Data Analysis Platform is a production-oriented analytics pipeline designed for tabular hospital datasets. It executes end-to-end on CPU-constrained environments while preserving deterministic behavior and auditability.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Robust Data Ingestion" icon="database">
+    Input loading, schema normalization, and dataset manifest generation for hospital data
+  </Card>
+  <Card title="Predictive Risk Modeling" icon="chart-line">
+    Anomaly-triggered early warning systems with configurable thresholds and risk stratification
+  </Card>
+  <Card title="Streaming Inference" icon="bolt">
+    Real-time prediction under constrained latency budgets with CPU-optimized execution
+  </Card>
+  <Card title="Deployment Diagnostics" icon="monitor">
+    Resource monitoring, ONNX export, and hardware utilization profiling
+  </Card>
+</CardGroup>
+
+## Operational Goals
+
+The platform focuses on four core objectives:
+
+1. **Robust data ingestion and schema normalization** - Handle CSV files with validation and consistency checks
+2. **Predictive risk modeling and anomaly-triggered early warning** - Detect outliers and provide timely alerts
+3. **Streaming inference under constrained latency budgets** - Score records in real-time with minimal overhead
+4. **Deployment diagnostics for resource and reliability monitoring** - Track performance metrics and hardware utilization
+
+<Note>
+The implementation emphasizes incremental validation and reproducible outputs over one-off model results.
+</Note>
+
+## Design Philosophy
+
+### CPU-First Execution
+
+The platform prioritizes compatibility with common deployment targets. GPU-only optimizations are intentionally out of scope to ensure broad compatibility.
+
+### Explicit Hardware Constraints
+
+Memory limits and compute budgets are treated as first-class experiment parameters, allowing you to:
+
+- Configure memory limits (e.g., 256MB, 512MB, 1024MB)
+- Set compute budgets for constrained environments
+- Adjust streaming intervals for latency-sensitive applications
+
+### Model Simplicity vs. Latency
+
+Simpler models reduce inference cost but may underfit rare patterns. Benchmark outputs expose this trade-off, enabling informed decision-making.
+
+## Repository Structure
+
+Core code is organized into focused modules:
+
+```
+Data Analysis for Hospitals/task/
+├── ingestion/          # Input loading and dataset manifest generation
+├── preprocessing/      # Cleaning and consistency checks
+├── feature_engineering/ # Derived feature construction
+├── modeling/           # Predictive and risk-band modeling
+├── anomaly_detection/  # Outlier detection and early-warning simulation
+├── real_time/          # Streaming utilities and online scoring
+├── deployment/         # CPU inference, ONNX export, and monitoring
+├── evaluation/         # Statistical metrics and benchmarking
+└── utils/              # Reproducibility, logging, and hardware helpers
+```
+
+<Warning>
+Generated artifacts are written to `Data Analysis for Hospitals/task/artifacts/`. Ensure your runtime has sufficient permissions to create files in this directory.
+</Warning>
+
+## Use Cases
+
+### Hospital Operations
+
+- **Early warning systems** for patient deterioration
+- **Resource allocation** based on risk predictions
+- **Anomaly detection** for unusual clinical patterns
+
+### Research & Development
+
+- **Hardware-constrained ML experiments** with reproducible results
+- **Latency-accuracy trade-off analysis** for deployment planning
+- **Energy consumption profiling** across different precision settings
+
+### Production Deployment
+
+- **CPU-optimized inference** with ONNX export
+- **Streaming prediction** with configurable chunk sizes
+- **Monitoring dashboards** with alert metrics and latency tracking
+
+## Performance Characteristics
+
+<Info>
+Throughput and latency depend on:
+- Stream chunk size
+- Feature dimensionality
+- Configured compute budget
+- Available system memory
+</Info>
+
+Memory pressure is sensitive to effective batch size and precision assumptions. Repeated benchmark runs are required because single-run latency is noisy on shared or throttled hosts.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Run your first pipeline in under 5 minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed setup instructions and requirements
+  </Card>
+</CardGroup>

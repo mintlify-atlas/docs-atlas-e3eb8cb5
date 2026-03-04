@@ -1,0 +1,87 @@
+---
+title: "Monitoring API"
+description: "Real-time monitoring and alerting for production model performance"
+---
+
+## build_monitoring_summary
+
+```python
+def build_monitoring_summary(
+    alert_flags: pd.Series,
+    risk_probabilities: pd.Series,
+    stream_latency_ms_per_row: float
+) -> dict[str, float | int | str | None]
+```
+
+Builds a comprehensive monitoring summary for production model performance tracking.
+
+<ParamField path="alert_flags" type="pd.Series" required>
+  Boolean series indicating which samples triggered alerts (True/1 for alert, False/0 for no alert)
+</ParamField>
+
+<ParamField path="risk_probabilities" type="pd.Series" required>
+  Series of predicted risk probabilities from the model
+</ParamField>
+
+<ParamField path="stream_latency_ms_per_row" type="float" required>
+  Average processing latency in milliseconds per row
+</ParamField>
+
+<ResponseField name="return" type="dict[str, float | int | str | None]">
+  Dictionary containing monitoring metrics:
+  - `timestamp_utc` (str): ISO format timestamp in UTC when summary was created
+  - `samples_observed` (int): Total number of samples processed
+  - `alert_count` (int): Number of samples that triggered alerts
+  - `alert_rate` (float): Proportion of samples with alerts (alert_count / samples_observed)
+  - `mean_risk_probability` (float): Average predicted risk probability
+  - `risk_probability_std` (float): Standard deviation of risk probabilities (population std)
+  - `estimated_data_drift` (float): Absolute difference between mean risk probability and 0.5
+  - `stream_latency_ms_per_row` (float): Processing latency per row
+  - `first_alert_index` (int | None): Index of first alert, or None if no alerts
+</ResponseField>
+
+### Example
+
+```python
+from deployment.monitoring import build_monitoring_summary
+import pandas as pd
+
+alert_flags = pd.Series([0, 1, 0, 1, 1, 0])
+risk_probs = pd.Series([0.3, 0.7, 0.4, 0.8, 0.9, 0.2])
+
+summary = build_monitoring_summary(
+    alert_flags=alert_flags,
+    risk_probabilities=risk_probs,
+    stream_latency_ms_per_row=12.5
+)
+
+print(summary)
+# Output:
+# {
+#     'timestamp_utc': '2026-03-04T10:30:45.123456+00:00',
+#     'samples_observed': 6,
+#     'alert_count': 3,
+#     'alert_rate': 0.5,
+#     'mean_risk_probability': 0.55,
+#     'risk_probability_std': 0.267,
+#     'estimated_data_drift': 0.05,
+#     'stream_latency_ms_per_row': 12.5,
+#     'first_alert_index': 1
+# }
+```
+
+### Monitoring Metrics Explained
+
+#### Alert Metrics
+- **alert_count**: Total alerts for immediate attention
+- **alert_rate**: Normalized alert frequency for trend analysis
+- **first_alert_index**: Quick identification of when issues began
+
+#### Model Performance
+- **mean_risk_probability**: Average model prediction, useful for baseline tracking
+- **risk_probability_std**: Prediction variability indicator
+- **estimated_data_drift**: Simple drift detector based on deviation from expected 0.5 baseline
+
+#### System Performance
+- **stream_latency_ms_per_row**: Processing speed for SLA compliance
+- **timestamp_utc**: Temporal tracking for time-series analysis

@@ -1,0 +1,169 @@
+---
+title: "Configuration API"
+description: "API reference for system configuration and parameters"
+---
+
+## Overview
+
+The config module defines the system-wide configuration using a dataclass that controls data paths, hardware constraints, experiment parameters, and reproducibility settings.
+
+## Data Classes
+
+### SystemConfig
+
+Central configuration dataclass for the Hospital Data Analysis Platform.
+
+```python
+@dataclass
+class SystemConfig:
+    random_seed: int = 42
+    test_size: float = 0.25
+    data_dir: Path = Path(__file__).resolve().parent.parent / "test"
+    output_dir: Path = Path(__file__).resolve().parent / "artifacts"
+    stream_chunk_size: int = 16
+    stream_interval_ms: int = 10
+    hardware_memory_limit_mb: int = 256
+    hardware_compute_budget: int = 10_000
+    benchmark_runs: int = 5
+    confidence_level: float = 0.95
+    feature_columns: list[str] = field(
+        default_factory=lambda: ["age", "height", "weight", "bmi", "children", "months"]
+    )
+    target_risk: str = "diagnosis"
+    target_outcome: str = "blood_test"
+    experiment_memory_limits_mb: list[int] = field(default_factory=lambda: [64, 128, 256])
+    experiment_compute_budgets: list[int] = field(default_factory=lambda: [2_000, 5_000, 10_000])
+    experiment_stream_speeds_ms: list[int] = field(default_factory=lambda: [5, 10, 20])
+```
+
+### Reproducibility Parameters
+
+<ParamField path="random_seed" type="int" default="42">
+  Random seed for reproducibility across Python, NumPy, and hashing operations
+</ParamField>
+
+<ParamField path="test_size" type="float" default="0.25">
+  Fraction of data to use for testing (0-1)
+</ParamField>
+
+### Path Configuration
+
+<ParamField path="data_dir" type="Path" default="../test">
+  Directory containing input data files. Defaults to `test` directory relative to project root
+</ParamField>
+
+<ParamField path="output_dir" type="Path" default="./artifacts">
+  Directory for output artifacts (CSV files, plots, models). Created automatically if it doesn't exist
+</ParamField>
+
+### Streaming Parameters
+
+<ParamField path="stream_chunk_size" type="int" default="16">
+  Number of records processed per stream chunk
+</ParamField>
+
+<ParamField path="stream_interval_ms" type="int" default="10">
+  Time interval between stream chunks in milliseconds
+</ParamField>
+
+### Hardware Constraints
+
+<ParamField path="hardware_memory_limit_mb" type="int" default="256">
+  Memory limit for hardware profiling in megabytes
+</ParamField>
+
+<ParamField path="hardware_compute_budget" type="int" default="10000">
+  Compute budget representing maximum number of operations
+</ParamField>
+
+### Benchmarking Parameters
+
+<ParamField path="benchmark_runs" type="int" default="5">
+  Number of repeated runs for benchmark experiments
+</ParamField>
+
+<ParamField path="confidence_level" type="float" default="0.95">
+  Confidence level for statistical intervals (0-1)
+</ParamField>
+
+### Feature and Target Configuration
+
+<ParamField path="feature_columns" type="list[str]" default="['age', 'height', 'weight', 'bmi', 'children', 'months']">
+  List of feature column names to use in analysis
+</ParamField>
+
+<ParamField path="target_risk" type="str" default="diagnosis">
+  Column name for risk classification target
+</ParamField>
+
+<ParamField path="target_outcome" type="str" default="blood_test">
+  Column name for outcome prediction target
+</ParamField>
+
+### Experiment Parameter Sweeps
+
+<ParamField path="experiment_memory_limits_mb" type="list[int]" default="[64, 128, 256]">
+  Memory limits to test in hardware constraint experiments (in MB)
+</ParamField>
+
+<ParamField path="experiment_compute_budgets" type="list[int]" default="[2000, 5000, 10000]">
+  Compute budgets to test in hardware constraint experiments
+</ParamField>
+
+<ParamField path="experiment_stream_speeds_ms" type="list[int]" default="[5, 10, 20]">
+  Stream interval speeds to test in experiments (in milliseconds)
+</ParamField>
+
+## Global Instance
+
+### CONFIG
+
+The module provides a global `CONFIG` instance that is used throughout the platform:
+
+```python
+CONFIG = SystemConfig()
+CONFIG.output_dir.mkdir(parents=True, exist_ok=True)
+```
+
+The output directory is automatically created when the module is imported.
+
+## Usage Examples
+
+### Using the Default Configuration
+
+```python
+from config import CONFIG
+
+print(f"Random seed: {CONFIG.random_seed}")
+print(f"Output directory: {CONFIG.output_dir}")
+print(f"Feature columns: {CONFIG.feature_columns}")
+```
+
+### Creating a Custom Configuration
+
+```python
+from pathlib import Path
+from config import SystemConfig
+
+custom_config = SystemConfig(
+    random_seed=123,
+    hardware_memory_limit_mb=512,
+    benchmark_runs=10,
+    feature_columns=["age", "weight", "bmi"],
+    output_dir=Path("./my_artifacts")
+)
+
+custom_config.output_dir.mkdir(parents=True, exist_ok=True)
+```
+
+### Accessing Experiment Parameters
+
+```python
+from config import CONFIG
+
+# Generate all parameter combinations for experiments
+for memory in CONFIG.experiment_memory_limits_mb:
+    for compute in CONFIG.experiment_compute_budgets:
+        for speed in CONFIG.experiment_stream_speeds_ms:
+            print(f"Testing: {memory}MB, {compute} ops, {speed}ms interval")
+```

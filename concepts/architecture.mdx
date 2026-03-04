@@ -1,0 +1,222 @@
+---
+title: System Architecture
+description: Overview of the Hospital Data Analysis Platform architecture and design principles
+---
+
+## Overview
+
+The Hospital Data Analysis Platform is a production-oriented analytics pipeline designed for CPU-constrained environments. The architecture prioritizes **deterministic behavior**, **auditability**, and **incremental validation** over one-off model results.
+
+## Design Principles
+
+### CPU-First Execution
+
+The platform is intentionally optimized for CPU execution rather than GPU acceleration. This design choice:
+
+- Prioritizes compatibility with common deployment targets
+- Reduces hardware variance in production environments
+- Enables deployment on resource-constrained edge devices
+- Simplifies infrastructure requirements
+
+### Explicit Hardware Awareness
+
+Hardware constraints are treated as **first-class experiment parameters** rather than afterthoughts. The system explicitly models:
+
+- Memory limits (MB)
+- Compute budgets (operation counts)
+- Batch size constraints
+- Stream processing intervals
+
+### Staged Pipeline Architecture
+
+The pipeline uses **explicit stage boundaries** to isolate failure domains. This prevents data-quality errors from being conflated with model-quality regressions.
+
+```mermaid
+graph LR
+    A[Ingestion] --> B[Preprocessing]
+    B --> C[Feature Engineering]
+    C --> D[Modeling]
+    D --> E[Deployment]
+    
+    style A fill:#e1f5ff
+    style B fill:#e1f5ff
+    style C fill:#fff4e1
+    style D fill:#ffe1e1
+    style E fill:#e1ffe1
+```
+
+## Core Components
+
+### Data Layer
+
+Located in `task/ingestion/` and `task/preprocessing/`:
+
+- **Ingestion**: CSV loading and dataset manifest generation
+- **Preprocessing**: Data cleaning, schema normalization, and consistency checks
+- **Versioning**: Dataset versioning and change tracking
+
+<CodeGroup>
+```python ingestion/loader.py
+HOSPITAL_FILES = {
+    "general": "general.csv",
+    "prenatal": "prenatal.csv",
+    "sports": "sports.csv",
+}
+
+def load_hospital_data(data_dir: Path) -> dict[str, pd.DataFrame]:
+    datasets: dict[str, pd.DataFrame] = {}
+    for hospital, file_name in HOSPITAL_FILES.items():
+        path = data_dir / file_name
+        datasets[hospital] = pd.read_csv(path)
+    return datasets
+```
+
+```python preprocessing/cleaning.py
+def clean_hospital_data(df: pd.DataFrame) -> pd.DataFrame:
+    clean = df.copy()
+    clean["gender"] = clean["gender"].replace({
+        "male": "m", "female": "f", 
+        "man": "m", "woman": "f"
+    })
+    clean[NUMERIC_FILL_COLUMNS] = clean[NUMERIC_FILL_COLUMNS].fillna(0)
+    for col in TEST_COLUMNS:
+        clean[col] = clean[col].fillna("unknown")
+    return clean
+```
+</CodeGroup>
+
+### Feature Engineering
+
+Located in `task/feature_engineering/`:
+
+- Derived feature construction (age ranges, BMI risk categories)
+- Feature normalization and standardization
+- Categorical encoding for hospital and demographic features
+
+```python feature_engineering/features.py
+AGE_BINS = [0, 15, 35, 55, 70, 80]
+AGE_LABELS = ["0-15", "15-35", "35-55", "55-70", "70-80"]
+
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    feat = df.copy()
+    feat["age_range"] = pd.cut(feat["age"], bins=AGE_BINS, labels=AGE_LABELS)
+    feat["is_adult"] = (feat["age"] >= 18).astype(int)
+    feat["bmi_risk"] = pd.cut(
+        feat["bmi"], 
+        bins=[-1, 18.5, 25, 30, 100], 
+        labels=[0, 1, 2, 3]
+    ).astype(float)
+    return feat
+```
+
+### Modeling Layer
+
+Located in `task/modeling/`:
+
+- **Predictive Models**: Custom logistic regression implementation optimized for CPU
+- **Risk Stratification**: Multi-band risk classification (high/medium/low)
+- **Model Evaluation**: Accuracy, F1, and AUC metrics
+
+### Anomaly Detection
+
+Located in `task/anomaly_detection/`:
+
+- Outlier detection for early warning systems
+- Detection latency evaluation
+- Alert threshold calibration
+
+### Real-Time Processing
+
+Located in `task/real_time/`:
+
+- Streaming inference with configurable chunk sizes
+- Batch vs. streaming performance comparison
+- Online scoring with latency tracking
+
+### Deployment Layer
+
+Located in `task/deployment/`:
+
+- **CPU Inference**: Optimized prediction runtime
+- **ONNX Export**: Model serialization for cross-platform deployment
+- **Monitoring**: Alert tracking, latency profiling, and reliability metrics
+
+## Architectural Trade-offs
+
+### Stage Boundaries
+
+**Cost**: Stage boundaries add I/O and serialization overhead
+
+**Benefit**: Improved debuggability, restartability, and isolation of failure domains
+
+### Conservative Batch Sizes
+
+**Cost**: Longer total runtime for large datasets
+
+**Benefit**: Stability under memory pressure and predictable resource usage
+
+### Model Simplicity
+
+**Cost**: Simpler models may underfit rare patterns
+
+**Benefit**: Reduced inference latency and lower computational requirements
+
+### Stream Chunking
+
+**Cost**: Increased overhead and potential jitter at very small chunk sizes
+
+**Benefit**: Improved online responsiveness and incremental result availability
+
+## Repository Structure
+
+```
+Data Analysis for Hospitals/task/
+├── ingestion/          # Data loading and manifest generation
+├── preprocessing/      # Cleaning and normalization
+├── feature_engineering/# Feature construction
+├── modeling/          # Predictive and risk models
+├── anomaly_detection/ # Outlier detection and early warning
+├── real_time/         # Streaming utilities and online scoring
+├── deployment/        # CPU inference, ONNX export, monitoring
+├── evaluation/        # Metrics, benchmarks, experiments
+└── utils/             # Reproducibility, logging, hardware helpers
+```
+
+## Configuration Management
+
+The system uses a centralized configuration dataclass in `config.py`:
+
+```python config.py
+@dataclass
+class SystemConfig:
+    random_seed: int = 42
+    test_size: float = 0.25
+    stream_chunk_size: int = 16
+    hardware_memory_limit_mb: int = 256
+    hardware_compute_budget: int = 10_000
+    benchmark_runs: int = 5
+    confidence_level: float = 0.95
+```
+
+This enables reproducible experiments and consistent behavior across different execution environments.
+
+## Artifacts and Outputs
+
+All pipeline outputs are written to `task/artifacts/`:
+
+- Model checkpoints and serialized estimators
+- Experiment logs and benchmark results
+- Hardware profile tables
+- Dataset manifests and versioning metadata
+- Monitoring summaries and alert logs
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Pipeline Stages" icon="sitemap" href="/concepts/pipeline-stages">
+    Detailed breakdown of each processing stage
+  </Card>
+  <Card title="Hardware Constraints" icon="microchip" href="/concepts/hardware-constraints">
+    Learn about hardware-aware optimization
+  </Card>
+</CardGroup>

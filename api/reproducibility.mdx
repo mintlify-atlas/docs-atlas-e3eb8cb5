@@ -1,0 +1,161 @@
+---
+title: "Reproducibility Utilities API"
+description: "API reference for reproducibility and deterministic execution"
+---
+
+## Overview
+
+The reproducibility module provides utilities for ensuring deterministic execution across different runs by controlling random seeds, threading behavior, and environment variables.
+
+## Functions
+
+### set_global_seed
+
+Sets random seeds globally for Python, NumPy, and configures threading for deterministic behavior.
+
+```python
+def set_global_seed(seed: int) -> None
+```
+
+<ParamField path="seed" type="int" required>
+  Random seed value to use across all random number generators
+</ParamField>
+
+**Effects:**
+- Sets `random.seed(seed)` for Python's built-in random module
+- Sets `np.random.seed(seed)` for NumPy
+- Sets `PYTHONHASHSEED` environment variable to ensure hash randomization is deterministic
+- Configures threading environment variables (see below)
+
+**Threading Configuration:**
+
+Sets the following environment variables to `"1"` if not already set:
+- `OMP_NUM_THREADS`: OpenMP thread count
+- `MKL_NUM_THREADS`: Intel MKL thread count
+- `OPENBLAS_NUM_THREADS`: OpenBLAS thread count
+
+This ensures deterministic behavior in numerical libraries by limiting parallel execution.
+
+**Example:**
+```python
+from utils.reproducibility import set_global_seed
+
+# Ensure reproducible results
+set_global_seed(42)
+
+# Now all random operations will be deterministic
+import random
+import numpy as np
+
+print(random.random())  # Same value every run
+print(np.random.rand()) # Same value every run
+```
+
+### reproducibility_context
+
+Captures the current reproducibility context including platform information, seed, and environment variables.
+
+```python
+def reproducibility_context(config: object) -> dict
+```
+
+<ParamField path="config" type="object" required>
+  Configuration object (typically a dataclass or dict-like) containing a `random_seed` field
+</ParamField>
+
+<ResponseField name="return" type="dict">
+  Dictionary containing reproducibility metadata:
+  
+  **python_version** (str): Python version string (e.g., "3.10.5")
+  
+  **platform** (str): Platform identifier (e.g., "Linux-5.15.0-x86_64")
+  
+  **seed** (int): Random seed extracted from config or 0 if not found
+  
+  **thread_env** (dict): Current threading environment variable values:
+  - `OMP_NUM_THREADS`: OpenMP thread count setting
+  - `MKL_NUM_THREADS`: Intel MKL thread count setting
+  - `OPENBLAS_NUM_THREADS`: OpenBLAS thread count setting
+  - `PYTHONHASHSEED`: Python hash seed value
+</ResponseField>
+
+**Example:**
+```python
+from dataclasses import dataclass
+from utils.reproducibility import set_global_seed, reproducibility_context
+
+@dataclass
+class Config:
+    random_seed: int = 42
+    model_name: str = "detector"
+
+config = Config()
+set_global_seed(config.random_seed)
+
+context = reproducibility_context(config)
+print(f"Python version: {context['python_version']}")
+print(f"Platform: {context['platform']}")
+print(f"Seed: {context['seed']}")
+print(f"Thread settings: {context['thread_env']}")
+
+# Save context with experiment results
+import json
+with open("experiment_context.json", "w") as f:
+    json.dump(context, f, indent=2)
+```
+
+## Usage Patterns
+
+### Standard Setup
+
+```python
+from config import CONFIG
+from utils.reproducibility import set_global_seed, reproducibility_context
+
+# Set seed at the start of your script
+set_global_seed(CONFIG.random_seed)
+
+# Capture context for logging
+context = reproducibility_context(CONFIG)
+```
+
+### With Custom Configuration
+
+```python
+from utils.reproducibility import set_global_seed, reproducibility_context
+
+class MyConfig:
+    def __init__(self):
+        self.random_seed = 123
+        self.experiment_name = "test"
+
+config = MyConfig()
+set_global_seed(config.random_seed)
+context = reproducibility_context(config)
+```
+
+### Saving Reproducibility Information
+
+```python
+import json
+from pathlib import Path
+from config import CONFIG
+from utils.reproducibility import set_global_seed, reproducibility_context
+
+set_global_seed(CONFIG.random_seed)
+context = reproducibility_context(CONFIG)
+
+# Save with experimental results
+output_path = CONFIG.output_dir / "reproducibility.json"
+with open(output_path, "w") as f:
+    json.dump(context, f, indent=2)
+
+print(f"Reproducibility context saved to {output_path}")
+```
+
+## Notes
+
+- Always call `set_global_seed()` at the beginning of your script before any random operations
+- The threading configuration limits parallelism to ensure determinism but may impact performance
+- `reproducibility_context()` works with both dataclasses and dictionary-like configuration objects
+- Environment variables are only set if not already configured, allowing manual overrides

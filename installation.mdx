@@ -1,0 +1,381 @@
+---
+title: Installation
+description: Complete setup guide for the Hospital Data Analysis Platform
+---
+
+## System Requirements
+
+### Python Version
+
+<Note>
+**Python 3.10 or higher is required.** The platform uses modern Python features and type hints that depend on 3.10+.
+</Note>
+
+Verify your Python version:
+
+```bash
+python --version
+# or
+python3 --version
+```
+
+Expected output: `Python 3.10.x` or higher
+
+### Hardware Requirements
+
+<CardGroup cols={2}>
+  <Card title="Minimum">
+    - 2 CPU cores
+    - 2GB RAM
+    - 1GB disk space
+  </Card>
+  <Card title="Recommended">
+    - 4+ CPU cores
+    - 4GB+ RAM
+    - 5GB disk space
+  </Card>
+</CardGroup>
+
+<Info>
+The platform is designed for CPU-first execution. GPU acceleration is intentionally out of scope to ensure broad deployment compatibility.
+</Info>
+
+### Operating System
+
+The platform is compatible with:
+
+- Linux (Ubuntu 20.04+, CentOS 8+, etc.)
+- macOS 11+
+- Windows 10/11 with WSL2
+
+## Installation Steps
+
+<Steps>
+  <Step title="Access the project directory">
+    Navigate to the task directory:
+    
+    ```bash
+    cd "Data Analysis for Hospitals/task"
+    ```
+  </Step>
+
+  <Step title="Create a virtual environment (recommended)">
+    Isolate dependencies using a virtual environment:
+    
+    <CodeGroup>
+    ```bash Linux/macOS
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+    
+    ```bash Windows (WSL)
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+    
+    ```bash Windows (PowerShell)
+    python -m venv venv
+    .\venv\Scripts\Activate.ps1
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all required packages from `requirements.txt`:
+    
+    ```bash
+    pip install -r requirements.txt
+    ```
+    
+    <Note>
+    This may take 2-5 minutes depending on your internet connection and system performance.
+    </Note>
+  </Step>
+
+  <Step title="Verify installation">
+    Confirm all packages are installed correctly:
+    
+    ```bash
+    python -c "import numpy, pandas, sklearn, matplotlib; print('All core dependencies installed')"
+    ```
+  </Step>
+</Steps>
+
+## Dependencies
+
+The platform requires the following Python packages with pinned versions for reproducibility:
+
+### Core Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|----------|
+| numpy | 1.26.4 | Numerical computing and array operations |
+| pandas | 2.2.2 | Data manipulation and CSV processing |
+| scikit-learn | 1.5.1 | Machine learning models and preprocessing |
+
+### Visualization & Monitoring
+
+| Package | Version | Purpose |
+|---------|---------|----------|
+| matplotlib | 3.9.2 | Plotting and visualization |
+| seaborn | 0.13.2 | Statistical graphics |
+| psutil | 6.0.0 | Hardware profiling and resource monitoring |
+
+### Deployment & Testing
+
+| Package | Version | Purpose |
+|---------|---------|----------|
+| skl2onnx | 1.17.0 | ONNX model export for production inference |
+| pytest | 8.3.2 | Unit testing and validation |
+
+<Warning>
+**Version compatibility is critical.** The CI pipeline uses pinned dependencies for deterministic execution. Version mismatches may cause serialization errors or numerical inconsistencies.
+</Warning>
+
+## Configuration
+
+### Directory Structure
+
+After installation, ensure the following structure exists:
+
+```
+Data Analysis for Hospitals/task/
+├── cli.py                    # Main command-line interface
+├── config.py                 # Configuration parameters
+├── requirements.txt          # Dependency specifications
+├── test/                     # Input data directory
+│   ├── general.csv          # Hospital general data
+│   ├── prenatal.csv         # Prenatal care data
+│   └── sports.csv           # Sports medicine data
+├── artifacts/               # Output directory (auto-created)
+├── ingestion/
+├── preprocessing/
+├── feature_engineering/
+├── modeling/
+├── anomaly_detection/
+├── real_time/
+├── deployment/
+├── evaluation/
+└── utils/
+```
+
+<Note>
+The `artifacts/` directory is automatically created when you run the pipeline. You don't need to create it manually.
+</Note>
+
+### Data Directory Setup
+
+Place your hospital CSV files in the `test/` directory:
+
+```bash
+ls test/
+# Expected output:
+# general.csv  prenatal.csv  sports.csv
+```
+
+<Info>
+**CSV Schema Requirements:**
+- Files must follow the expected column schema used in feature generation
+- Column names should match the feature engineering expectations
+- Missing columns will trigger schema drift errors
+</Info>
+
+## Permissions
+
+### File System Access
+
+Ensure your runtime has sufficient permissions:
+
+```bash
+# Check write permissions for output directory
+touch artifacts/test_write.txt && rm artifacts/test_write.txt
+```
+
+If this fails, adjust permissions:
+
+```bash
+chmod -R u+w "Data Analysis for Hospitals/task/"
+```
+
+### Python Package Installation
+
+If you encounter permission errors during `pip install`, use one of these approaches:
+
+<CodeGroup>
+```bash User Installation
+pip install --user -r requirements.txt
+```
+
+```bash Virtual Environment (Recommended)
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+</CodeGroup>
+
+## Validation
+
+### Run the Test Suite
+
+Verify your installation with the test suite:
+
+```bash
+pytest
+```
+
+<Check>
+All tests should pass with deterministic behavior via explicit seed control.
+</Check>
+
+### Generate a Dataset Manifest
+
+Test data loading and validation:
+
+```bash
+python cli.py manifest
+```
+
+Expected output: JSON manifest with file metadata, row counts, and checksums.
+
+### Run a Quick Pipeline Test
+
+Execute the full pipeline to confirm everything works:
+
+```bash
+python cli.py run
+```
+
+<Steps>
+  <Step title="Data loading">
+    Watch for messages about loading hospital data from CSV files.
+  </Step>
+  <Step title="Model training">
+    Monitor predictive model training and evaluation.
+  </Step>
+  <Step title="Artifact generation">
+    Verify outputs are written to `artifacts/` directory.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### ImportError: No module named 'xxx'
+
+**Cause:** Dependency not installed or wrong Python environment active
+
+**Solution:**
+```bash
+# Ensure virtual environment is activated
+source venv/bin/activate  # Linux/macOS
+# or
+.\venv\Scripts\Activate.ps1  # Windows
+
+# Reinstall dependencies
+pip install -r requirements.txt
+```
+
+### Version Conflicts
+
+**Cause:** Existing packages conflict with pinned versions
+
+**Solution:**
+```bash
+# Create fresh virtual environment
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Permission Denied on artifacts/
+
+**Cause:** Insufficient write permissions
+
+**Solution:**
+```bash
+mkdir -p "Data Analysis for Hospitals/task/artifacts"
+chmod -R u+w "Data Analysis for Hospitals/task/artifacts"
+```
+
+### Python 3.10+ Not Available
+
+**Solution:**
+
+<CodeGroup>
+```bash Ubuntu/Debian
+sudo apt update
+sudo apt install python3.10 python3.10-venv
+```
+
+```bash macOS (Homebrew)
+brew install python@3.10
+```
+
+```bash Windows
+# Download from https://www.python.org/downloads/
+# Ensure "Add Python to PATH" is checked during installation
+```
+</CodeGroup>
+
+## Environment Variables (Optional)
+
+Customize behavior with environment variables:
+
+```bash
+# Set custom random seed for reproducibility
+export RANDOM_SEED=42
+
+# Adjust hardware constraints
+export MEMORY_LIMIT_MB=512
+export COMPUTE_BUDGET=0.8
+
+# Configure output directory
+export OUTPUT_DIR=./custom_artifacts
+```
+
+<Note>
+Most users don't need to set environment variables. The platform uses sensible defaults from `config.py`.
+</Note>
+
+## Continuous Integration
+
+The repository uses standard Python tooling:
+
+- **Testing Framework:** pytest with unittest
+- **CI Target:** Python 3.10 with pinned dependencies
+- **Deterministic Behavior:** Explicit seed and threading environment controls
+
+<Info>
+For CI/CD integration, ensure your pipeline uses the same pinned dependency versions to maintain reproducibility.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Run your first pipeline in under 5 minutes
+  </Card>
+  <Card title="Configuration Guide" icon="sliders">
+    Customize pipeline parameters and constraints
+  </Card>
+  <Card title="CLI Reference" icon="terminal">
+    Detailed command documentation
+  </Card>
+  <Card title="Operations Guide" icon="book">
+    Production deployment best practices
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+<Warning>
+Before deploying to production:
+- Review `docs/OPERATIONS.md` for deployment considerations
+- Expand default benchmarks for production sign-off
+- Validate hardware estimates with device-calibrated measurements
+</Warning>
+
+For issues or questions:
+- Check troubleshooting sections in this guide
+- Review error messages for schema drift or missing dependencies
+- Verify your CSV files match expected schemas

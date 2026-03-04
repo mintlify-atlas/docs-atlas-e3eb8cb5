@@ -1,0 +1,269 @@
+---
+title: Reproducibility
+description: Reproducibility controls including seed management, environment variables, and context capture for the Hospital Data Analysis Platform
+---
+
+## Overview
+
+The Hospital Data Analysis Platform implements comprehensive reproducibility controls to ensure consistent results across different executions and environments. This is critical for validating model behavior, debugging issues, and satisfying regulatory requirements.
+
+## Seed Management
+
+### Setting the Global Seed
+
+The `set_global_seed` function (defined in `utils/reproducibility.py:16`) initializes all random number generators with a consistent seed:
+
+```python
+from utils.reproducibility import set_global_seed
+from config import CONFIG
+
+set_global_seed(CONFIG.random_seed)
+```
+
+### Implementation Details
+
+```python
+def set_global_seed(seed: int) -> None:
+    _set_default_threading_env()
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+```
+
+This function:
+
+1. **Sets threading environment variables** to ensure deterministic numeric library behavior
+2. **Seeds Python's random module** for standard library randomness
+3. **Seeds NumPy's random generator** for array operations
+4. **Sets PYTHONHASHSEED** to ensure deterministic hash-based operations (dict ordering, set operations)
+
+## Environment Variables
+
+### Threading Controls
+
+The `_set_default_threading_env` function (defined in `utils/reproducibility.py:10`) configures numeric library threading to eliminate non-determinism:
+
+```python
+def _set_default_threading_env() -> None:
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+```
+
+**Why this matters**: Multi-threaded numeric operations (BLAS, LAPACK) can produce slightly different results due to floating-point rounding when operations are executed in different orders. Setting thread counts to `1` ensures deterministic execution.
+
+### Environment Variable Reference
+
+| Variable | Purpose | Default Value |
+|----------|---------|---------------|
+| `OMP_NUM_THREADS` | OpenMP thread pool size | `"1"` |
+| `MKL_NUM_THREADS` | Intel MKL thread count | `"1"` |
+| `OPENBLAS_NUM_THREADS` | OpenBLAS thread count | `"1"` |
+| `PYTHONHASHSEED` | Hash randomization seed | Set to `CONFIG.random_seed` |
+
+**Note**: These variables are set using `setdefault`, so user-provided values are respected.
+
+## Reproducibility Context
+
+### Capturing Execution Context
+
+The `reproducibility_context` function (defined in `utils/reproducibility.py:23`) captures a snapshot of the execution environment:
+
+```python
+from utils.reproducibility import reproducibility_context
+from config import CONFIG
+
+context = reproducibility_context(CONFIG)
+print(context)
+```
+
+### Example Output
+
+```python
+{
+    "python_version": "3.11.5",
+    "platform": "Linux-5.15.0-x86_64-with-glibc2.35",
+    "seed": 42,
+    "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "PYTHONHASHSEED": "42"
+    }
+}
+```
+
+### Use Cases
+
+1. **Logging**: Include context in experiment logs for audit trails
+2. **Debugging**: Compare contexts when results differ across environments
+3. **Artifacts**: Save context alongside model checkpoints
+
+## Complete Reproducibility Workflow
+
+### Example: Reproducible Training Script
+
+```python
+import json
+from pathlib import Path
+from config import CONFIG, SystemConfig
+from utils.reproducibility import set_global_seed, reproducibility_context
+
+def main():
+    # Step 1: Set the global seed
+    set_global_seed(CONFIG.random_seed)
+    
+    # Step 2: Capture execution context
+    context = reproducibility_context(CONFIG)
+    
+    # Step 3: Log context for debugging
+    print(f"Reproducibility context: {json.dumps(context, indent=2)}")
+    
+    # Step 4: Save context with artifacts
+    context_path = CONFIG.output_dir / "reproducibility_context.json"
+    with open(context_path, "w") as f:
+        json.dump(context, f, indent=2)
+    
+    # Step 5: Run your training pipeline
+    # train_model(CONFIG)
+    
+if __name__ == "__main__":
+    main()
+```
+
+### Example: Cross-Environment Validation
+
+```python
+import json
+from utils.reproducibility import reproducibility_context
+from config import CONFIG
+
+def validate_environment(reference_context_path: str) -> bool:
+    """Compare current environment against a reference context."""
+    
+    # Load reference context
+    with open(reference_context_path) as f:
+        reference = json.load(f)
+    
+    # Capture current context
+    current = reproducibility_context(CONFIG)
+    
+    # Check critical fields
+    mismatches = []
+    
+    if current["seed"] != reference["seed"]:
+        mismatches.append(f"Seed mismatch: {current['seed']} vs {reference['seed']}")
+    
+    if current["python_version"] != reference["python_version"]:
+        mismatches.append(f"Python version mismatch: {current['python_version']} vs {reference['python_version']}")
+    
+    for key in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"]:
+        if current["thread_env"][key] != reference["thread_env"][key]:
+            mismatches.append(f"{key} mismatch")
+    
+    if mismatches:
+        print("Environment validation failed:")
+        for msg in mismatches:
+            print(f"  - {msg}")
+        return False
+    
+    print("Environment validation passed")
+    return True
+```
+
+## Best Practices
+
+### 1. Set Seed Early
+
+Always call `set_global_seed` before any operations that use randomness:
+
+```python
+# Good: Seed set before imports that might use randomness
+from utils.reproducibility import set_global_seed
+set_global_seed(42)
+
+import numpy as np
+import sklearn
+
+# Bad: Seed set after randomness is already used
+import numpy as np
+np.random.rand()  # This uses unseeded randomness
+set_global_seed(42)  # Too late!
+```
+
+### 2. Capture Context with Artifacts
+
+Always save the reproducibility context alongside model artifacts:
+
+```python
+import pickle
+import json
+
+# Save model
+with open(CONFIG.output_dir / "model.pkl", "wb") as f:
+    pickle.dump(model, f)
+
+# Save context
+context = reproducibility_context(CONFIG)
+with open(CONFIG.output_dir / "model_context.json", "w") as f:
+    json.dump(context, f, indent=2)
+```
+
+### 3. Document Environment Changes
+
+If you need to override threading for performance reasons, document it clearly:
+
+```python
+import os
+
+# Override for production deployment (non-reproducible)
+os.environ["OMP_NUM_THREADS"] = "4"  # Use 4 threads for throughput
+print("WARNING: Reproducibility disabled for production throughput")
+```
+
+### 4. Version Control Configuration
+
+Store configuration files in version control to track changes:
+
+```bash
+git add config.py
+git commit -m "Update random seed for experiment batch 2"
+```
+
+## Limitations
+
+### Known Sources of Non-Determinism
+
+1. **Floating-point operations**: Different CPU architectures may produce slightly different results due to precision differences
+2. **Multi-threading**: Even with thread count = 1, some libraries may still use threading internally
+3. **System libraries**: OS-level randomness (e.g., `/dev/urandom`) is not controlled by these utilities
+4. **External services**: API calls, database queries, and network operations are inherently non-deterministic
+
+### Verification Strategy
+
+To verify reproducibility:
+
+1. Run the same script twice with the same seed
+2. Compare outputs using checksums or exact equality checks
+3. If results differ, investigate numeric precision, library versions, or system dependencies
+
+```python
+import numpy as np
+
+# Run 1
+set_global_seed(42)
+result1 = train_model()
+
+# Run 2
+set_global_seed(42)
+result2 = train_model()
+
+# Verify
+assert np.allclose(result1, result2), "Results not reproducible!"
+```
+
+## See Also
+
+- [Configuration](/operations/configuration) - System configuration and random seed settings
+- [Benchmarking](/operations/benchmarking) - Reproducible performance measurements
+- [Troubleshooting](/operations/troubleshooting) - Debugging reproducibility issues

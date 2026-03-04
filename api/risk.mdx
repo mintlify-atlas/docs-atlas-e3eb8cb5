@@ -1,0 +1,61 @@
+---
+title: Risk Stratification API
+description: Stratify patients into risk bands based on prediction probabilities
+---
+
+## stratify_risk
+
+Assign risk bands (low/medium/high) to patients based on predicted probabilities.
+
+```python
+stratify_risk(
+    probabilities: pd.Series,
+    low_threshold: float = 0.35,
+    high_threshold: float = 0.7
+) -> pd.DataFrame
+```
+
+<ParamField path="probabilities" type="pd.Series" required>
+  Series of predicted probabilities for each patient (values between 0 and 1)
+</ParamField>
+
+<ParamField path="low_threshold" type="float" default="0.35">
+  Threshold below which patients are classified as low risk
+</ParamField>
+
+<ParamField path="high_threshold" type="float" default="0.7">
+  Threshold at or above which patients are classified as high risk
+</ParamField>
+
+<ResponseField name="return" type="pd.DataFrame">
+  DataFrame with columns:
+  - `risk_probability`: Original probability values (float)
+  - `risk_band`: Risk category as "low", "medium", or "high" (str)
+</ResponseField>
+
+### Risk Band Classification
+
+- **Low**: probability < low_threshold (default < 0.35)
+- **Medium**: low_threshold ≤ probability < high_threshold (default 0.35-0.7)
+- **High**: probability ≥ high_threshold (default ≥ 0.7)
+
+## summarize_risk_bands
+
+Calculate the prevalence of each risk band in a stratified population.
+
+```python
+summarize_risk_bands(risk_frame: pd.DataFrame) -> dict[str, float]
+```
+
+<ParamField path="risk_frame" type="pd.DataFrame" required>
+  DataFrame output from stratify_risk containing a 'risk_band' column
+</ParamField>
+
+<ResponseField name="return" type="dict[str, float]">
+  Dictionary with normalized prevalence for each risk band:
+  - `low_prevalence`: Proportion of low risk patients (0.0-1.0)
+  - `medium_prevalence`: Proportion of medium risk patients (0.0-1.0)
+  - `high_prevalence`: Proportion of high risk patients (0.0-1.0)
+  
+  All values sum to 1.0. Missing bands default to 0.0.
+</ResponseField>

@@ -1,0 +1,217 @@
+---
+title: Data Ingestion
+description: Load and merge hospital datasets from multiple CSV sources with versioning support
+---
+
+The data ingestion module handles loading CSV files from different hospital departments and merging them into a unified dataset. It also provides dataset versioning through file hashing and manifest generation.
+
+## Loading Hospital Data
+
+The `load_hospital_data()` function loads CSV files from three hospital departments: general, prenatal, and sports.
+
+### Function Signature
+
+```python
+def load_hospital_data(data_dir: Path) -> dict[str, pd.DataFrame]
+```
+
+**Parameters:**
+- `data_dir` (Path): Directory containing the hospital CSV files
+
+**Returns:**
+- Dictionary mapping hospital names to DataFrames
+
+### Supported Hospital Files
+
+The loader expects these CSV files in the data directory:
+
+- `general.csv` - General hospital data
+- `prenatal.csv` - Prenatal care data
+- `sports.csv` - Sports medicine data
+
+### Usage Example
+
+```python
+from pathlib import Path
+from ingestion.loader import load_hospital_data
+
+data_dir = Path("data/hospital")
+datasets = load_hospital_data(data_dir)
+
+print(datasets.keys())  # dict_keys(['general', 'prenatal', 'sports'])
+print(datasets["general"].shape)
+```
+
+From cli.py:50:
+
+```python
+datasets = load_hospital_data(CONFIG.data_dir)
+```
+
+## Merging Datasets
+
+The `merge_hospital_data()` function combines multiple hospital datasets into a single DataFrame by aligning column names and concatenating rows.
+
+### Function Signature
+
+```python
+def merge_hospital_data(datasets: dict[str, pd.DataFrame]) -> pd.DataFrame
+```
+
+**Parameters:**
+- `datasets` (dict[str, pd.DataFrame]): Dictionary of hospital DataFrames from `load_hospital_data()`
+
+**Returns:**
+- Merged DataFrame with aligned columns and reset index
+
+### Merging Behavior
+
+1. Uses the `general` hospital's columns as the reference schema
+2. Renames all other datasets' columns to match the general schema
+3. Concatenates all datasets vertically with `ignore_index=True`
+4. Removes the `Unnamed: 0` column if present (common pandas artifact)
+
+### Usage Example
+
+```python
+from ingestion.loader import load_hospital_data, merge_hospital_data
+
+datasets = load_hospital_data(data_dir)
+merged = merge_hospital_data(datasets)
+
+print(f"Total records: {len(merged)}")
+print(f"Columns: {list(merged.columns)}")
+```
+
+From cli.py:50-51:
+
+```python
+datasets = load_hospital_data(CONFIG.data_dir)
+merged = merge_hospital_data(datasets)
+```
+
+## Dataset Versioning
+
+The versioning module provides dataset integrity tracking through SHA-256 file hashing and JSON manifests.
+
+### Creating a Dataset Manifest
+
+```python
+def create_dataset_manifest(data_dir: Path, output_path: Path) -> dict
+```
+
+**Parameters:**
+- `data_dir` (Path): Directory containing CSV files to track
+- `output_path` (Path): Path where the manifest JSON will be saved
+
+**Returns:**
+- Dictionary containing dataset metadata
+
+### Manifest Structure
+
+The generated manifest includes:
+
+```json
+{
+  "dataset_dir": "data/hospital",
+  "files": [
+    {
+      "name": "general.csv",
+      "sha256": "a1b2c3...",
+      "size": 524288
+    },
+    {
+      "name": "prenatal.csv",
+      "sha256": "d4e5f6...",
+      "size": 393216
+    },
+    {
+      "name": "sports.csv",
+      "sha256": "g7h8i9...",
+      "size": 458752
+    }
+  ]
+}
+```
+
+### File Hashing
+
+The `hash_file()` function computes SHA-256 checksums:
+
+```python
+def hash_file(path: Path) -> str
+```
+
+**Parameters:**
+- `path` (Path): Path to the file to hash
+
+**Returns:**
+- Hexadecimal SHA-256 hash string
+
+### Usage Example
+
+```python
+from pathlib import Path
+from ingestion.versioning import create_dataset_manifest, hash_file
+
+# Create a manifest for all CSV files
+manifest = create_dataset_manifest(
+    data_dir=Path("data/hospital"),
+    output_path=Path("output/dataset_manifest.json")
+)
+
+print(f"Tracked {len(manifest['files'])} files")
+
+# Hash a single file
+file_hash = hash_file(Path("data/hospital/general.csv"))
+print(f"File hash: {file_hash}")
+```
+
+From cli.py:115 and cli.py:158:
+
+```python
+# In the main pipeline
+manifest = create_dataset_manifest(
+    CONFIG.data_dir, 
+    CONFIG.output_dir / "dataset_manifest.json"
+)
+
+# As a standalone command
+if args.command == "manifest":
+    manifest = create_dataset_manifest(
+        CONFIG.data_dir, 
+        CONFIG.output_dir / "dataset_manifest.json"
+    )
+    print(json.dumps(manifest, indent=2))
+```
+
+## Complete Pipeline Example
+
+Here's how ingestion is used in the full pipeline:
+
+```python
+from pathlib import Path
+from ingestion.loader import load_hospital_data, merge_hospital_data
+from ingestion.versioning import create_dataset_manifest
+
+# Configuration
+data_dir = Path("data/hospital")
+output_dir = Path("output")
+
+# Load individual hospital datasets
+datasets = load_hospital_data(data_dir)
+print(f"Loaded {len(datasets)} hospital datasets")
+
+# Merge into unified dataset
+merged = merge_hospital_data(datasets)
+print(f"Merged dataset shape: {merged.shape}")
+
+# Create versioning manifest
+manifest = create_dataset_manifest(
+    data_dir, 
+    output_dir / "dataset_manifest.json"
+)
+print(f"Created manifest tracking {len(manifest['files'])} files")
+```
+
+This produces a clean, unified dataset ready for preprocessing and feature engineering.

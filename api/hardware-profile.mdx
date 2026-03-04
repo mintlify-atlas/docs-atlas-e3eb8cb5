@@ -1,0 +1,135 @@
+---
+title: "Hardware Profiling API"
+description: "API reference for hardware performance profiling and estimation"
+---
+
+## Overview
+
+The hardware profiling module provides utilities for estimating computational costs, memory usage, and throughput characteristics of model operations under different hardware constraints.
+
+## Functions
+
+### build_hardware_profile_table
+
+Builds a comprehensive hardware profile including operator-level costs, memory estimates, and precision tradeoffs.
+
+```python
+def build_hardware_profile_table(
+    feature_count: int,
+    batch_size: int,
+    stream_interval_ms: int
+) -> dict
+```
+
+<ParamField path="feature_count" type="int" required>
+  Number of features in the input data
+</ParamField>
+
+<ParamField path="batch_size" type="int" required>
+  Batch size for processing
+</ParamField>
+
+<ParamField path="stream_interval_ms" type="int" required>
+  Time interval between stream chunks in milliseconds
+</ParamField>
+
+<ResponseField name="return" type="dict">
+  A dictionary containing:
+  
+  **operator_profile** (list[dict]): List of operator-level statistics with keys:
+  - `operator` (str): Name of the operation
+  - `latency_ms` (float): Estimated latency in milliseconds
+  - `memory_kb` (float): Estimated memory usage in kilobytes
+  
+  Operators included:
+  - `input_normalization`
+  - `linear_projection`
+  - `activation`
+  - `decision_head`
+  
+  **totals** (dict): Aggregate metrics:
+  - `latency_ms` (float): Total latency across all operators
+  - `memory_kb` (float): Total memory usage
+  - `estimated_bandwidth_mb_s` (float): Estimated memory bandwidth in MB/s
+  - `stream_utilization` (float): Ratio of processing time to stream interval (0-1)
+  
+  **precision_tradeoffs** (dict): Memory estimates for different precision modes:
+  - `fp32_memory_kb` (float): Memory usage with 32-bit floating point
+  - `fp16_memory_kb` (float): Memory usage with 16-bit floating point (50% of fp32)
+  - `fp16_memory_kb` (float): Memory usage with 8-bit integer (25% of fp32)
+  - `note` (str): Warning about deployment-dependent latency effects
+  
+  **edge_constraints** (dict): Deployment considerations:
+  - `cache_sensitivity` (str): Notes on cache behavior
+  - `bottleneck` (str): Identification of performance bottlenecks
+</ResponseField>
+
+**Example:**
+```python
+from evaluation.hardware_profile import build_hardware_profile_table
+
+profile = build_hardware_profile_table(
+    feature_count=6,
+    batch_size=32,
+    stream_interval_ms=10
+)
+
+print(f"Total latency: {profile['totals']['latency_ms']:.2f} ms")
+print(f"Total memory: {profile['totals']['memory_kb']:.2f} KB")
+print(f"Stream utilization: {profile['totals']['stream_utilization']:.2%}")
+
+for op in profile['operator_profile']:
+    print(f"{op['operator']}: {op['latency_ms']:.3f} ms, {op['memory_kb']:.2f} KB")
+```
+
+### write_hardware_profile_artifacts
+
+Writes hardware profile data to CSV files for analysis and reporting.
+
+```python
+def write_hardware_profile_artifacts(
+    profile: dict,
+    output_dir: Path
+) -> dict[str, str]
+```
+
+<ParamField path="profile" type="dict" required>
+  Hardware profile dictionary returned by `build_hardware_profile_table`
+</ParamField>
+
+<ParamField path="output_dir" type="Path" required>
+  Directory where CSV files will be written. Created if it doesn't exist
+</ParamField>
+
+<ResponseField name="return" type="dict[str, str]">
+  Dictionary mapping artifact names to their file paths:
+  - `operator_profile_csv`: Path to operator-level profile CSV
+  - `hardware_totals_csv`: Path to aggregate totals CSV
+</ResponseField>
+
+**Files Created:**
+- `operator_profile.csv`: Operator-level latency and memory statistics
+- `hardware_totals.csv`: Aggregate metrics and bandwidth estimates
+
+**Example:**
+```python
+from pathlib import Path
+from evaluation.hardware_profile import (
+    build_hardware_profile_table,
+    write_hardware_profile_artifacts
+)
+
+profile = build_hardware_profile_table(
+    feature_count=6,
+    batch_size=32,
+    stream_interval_ms=10
+)
+
+artifacts = write_hardware_profile_artifacts(
+    profile=profile,
+    output_dir=Path("./artifacts/hardware")
+)
+
+print(f"Operator profile saved to: {artifacts['operator_profile_csv']}")
+print(f"Hardware totals saved to: {artifacts['hardware_totals_csv']}")
+```

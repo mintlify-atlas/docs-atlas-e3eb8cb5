@@ -1,0 +1,401 @@
+---
+title: Benchmarking
+description: Benchmarking utilities, statistical confidence intervals, and performance measurement for the Hospital Data Analysis Platform
+---
+
+## Overview
+
+The Hospital Data Analysis Platform provides robust benchmarking utilities with statistical confidence intervals. These tools enable reliable performance measurements that account for variance and provide confidence bounds.
+
+## BenchmarkResult Dataclass
+
+Benchmark results are returned as a `BenchmarkResult` dataclass (defined in `evaluation/benchmark.py:10`):
+
+```python
+@dataclass
+class BenchmarkResult:
+    metric_mean: float              # Mean of the target metric
+    metric_std: float               # Standard deviation of the metric
+    metric_ci_margin: float         # Confidence interval margin
+    latency_mean_ms: float          # Mean latency in milliseconds
+    latency_std_ms: float           # Standard deviation of latency
+    latency_ci_margin_ms: float     # Confidence interval margin for latency
+    runs: int                       # Number of benchmark iterations
+    confidence_level: float         # Confidence level (e.g., 0.95)
+```
+
+### Interpreting Results
+
+The confidence interval is expressed as `mean ± margin`:
+
+- **Metric**: `metric_mean ± metric_ci_margin`
+- **Latency**: `latency_mean_ms ± latency_ci_margin_ms`
+
+For a 95% confidence level, we can be 95% confident the true value lies within this range.
+
+## Repeated Benchmarks
+
+### Basic Usage
+
+The `run_repeated_benchmark` function (defined in `evaluation/benchmark.py:21`) runs a function multiple times and computes statistics:
+
+```python
+from evaluation.benchmark import run_repeated_benchmark
+from config import CONFIG
+
+def train_and_evaluate():
+    # Your training and evaluation logic
+    model = train_model()
+    metrics = evaluate_model(model)
+    return metrics  # Must be a dict with the metric_key
+
+result = run_repeated_benchmark(
+    run_fn=train_and_evaluate,
+    metric_key="accuracy",
+    runs=CONFIG.benchmark_runs,
+    confidence=CONFIG.confidence_level
+)
+
+print(f"Accuracy: {result.metric_mean:.3f} ± {result.metric_ci_margin:.3f}")
+print(f"Latency: {result.latency_mean_ms:.1f} ± {result.latency_ci_margin_ms:.1f} ms")
+```
+
+### Function Signature
+
+```python
+def run_repeated_benchmark(
+    run_fn,                    # Callable that returns a dict with metrics
+    metric_key: str,           # Key to extract from returned dict
+    runs: int = 5,             # Number of iterations (minimum 2)
+    confidence: float = 0.95   # Confidence level (0.90, 0.95, or 0.99)
+) -> BenchmarkResult:
+```
+
+### Implementation Details
+
+```python
+def run_repeated_benchmark(run_fn, metric_key: str, runs: int = 5, confidence: float = 0.95) -> BenchmarkResult:
+    effective_runs = max(2, int(runs))
+    metrics = []
+    latencies = []
+    
+    for _ in range(effective_runs):
+        start = time.perf_counter()
+        result = run_fn()
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        metrics.append(float(result[metric_key]))
+        latencies.append(elapsed_ms)
+    
+    m_mean, m_std, m_ci = confidence_interval(metrics, confidence=confidence)
+    l_mean, l_std, l_ci = confidence_interval(latencies, confidence=confidence)
+    return BenchmarkResult(m_mean, m_std, m_ci, l_mean, l_std, l_ci, effective_runs, confidence)
+```
+
+**Key features**:
+- Uses `time.perf_counter()` for high-resolution timing
+- Ensures minimum 2 runs for statistical validity
+- Computes confidence intervals for both metrics and latency
+
+## Table Metrics Benchmarking
+
+### Multi-Column Analysis
+
+The `benchmark_table_metrics` function (defined in `evaluation/benchmark.py:37`) computes statistics across multiple DataFrame columns:
+
+```python
+import pandas as pd
+from evaluation.benchmark import benchmark_table_metrics
+from config import CONFIG
+
+# Load experiment results
+df = pd.read_csv(CONFIG.output_dir / "experiment_results.csv")
+
+# Compute statistics for multiple metrics
+summary = benchmark_table_metrics(
+    df=df,
+    metric_columns=["accuracy", "precision", "recall", "f1_score"],
+    confidence=CONFIG.confidence_level
+)
+
+for metric, stats in summary.items():
+    print(f"{metric}: {stats['mean']:.3f} ± {stats['ci_margin']:.3f}")
+```
+
+### Function Signature
+
+```python
+def benchmark_table_metrics(
+    df,                           # pandas DataFrame with results
+    metric_columns: list[str],    # Column names to analyze
+    confidence: float = 0.95      # Confidence level
+) -> dict[str, dict[str, float]]:
+```
+
+### Return Format
+
+```python
+{
+    "accuracy": {
+        "mean": 0.847,
+        "std": 0.023,
+        "ci_margin": 0.018,
+        "confidence": 0.95
+    },
+    "precision": {
+        "mean": 0.832,
+        "std": 0.031,
+        "ci_margin": 0.024,
+        "confidence": 0.95
+    },
+    # ... other metrics
+}
+```
+
+## Statistical Confidence Intervals
+
+### Implementation
+
+The `confidence_interval` function (defined in `evaluation/statistics.py:7`) computes mean, standard deviation, and margin:
+
+```python
+import math
+import numpy as np
+
+def confidence_interval(values: list[float], confidence: float = 0.95) -> tuple[float, float, float]:
+    arr = np.array(values, dtype=float)
+    mean = float(arr.mean())
+    std = float(arr.std(ddof=1)) if len(arr) > 1 else 0.0
+    
+    if len(arr) <= 1:
+        return mean, std, 0.0
+    
+    z_map = {0.90: 1.64, 0.95: 1.96, 0.99: 2.58}
+    z = z_map.get(round(confidence, 2), 1.96)
+    margin = z * std / math.sqrt(len(arr))
+    return mean, std, float(margin)
+```
+
+### Supported Confidence Levels
+
+| Confidence Level | Z-Score |
+|------------------|----------|
+| 0.90 (90%) | 1.64 |
+| 0.95 (95%) | 1.96 |
+| 0.99 (99%) | 2.58 |
+
+**Note**: If an unsupported confidence level is provided, the function defaults to 1.96 (95% confidence).
+
+### Direct Usage
+
+```python
+from evaluation.statistics import confidence_interval
+
+latencies = [102.3, 98.7, 105.1, 99.8, 103.2]
+mean, std, margin = confidence_interval(latencies, confidence=0.95)
+
+print(f"Latency: {mean:.1f} ± {margin:.1f} ms")
+print(f"Range: [{mean - margin:.1f}, {mean + margin:.1f}] ms")
+```
+
+## Complete Benchmarking Example
+
+### End-to-End Performance Evaluation
+
+```python
+import pandas as pd
+from pathlib import Path
+from config import CONFIG
+from utils.reproducibility import set_global_seed
+from evaluation.benchmark import run_repeated_benchmark, benchmark_table_metrics
+
+def train_and_evaluate():
+    """Train a model and return evaluation metrics."""
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.datasets import make_classification
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import accuracy_score, precision_score
+    
+    # Generate synthetic data
+    X, y = make_classification(n_samples=1000, n_features=10, random_state=CONFIG.random_seed)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=CONFIG.test_size)
+    
+    # Train model
+    model = RandomForestClassifier(random_state=CONFIG.random_seed)
+    model.fit(X_train, y_train)
+    
+    # Evaluate
+    y_pred = model.predict(X_test)
+    return {
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred, average="weighted")
+    }
+
+def main():
+    # Set seed for reproducibility
+    set_global_seed(CONFIG.random_seed)
+    
+    print(f"Running benchmark with {CONFIG.benchmark_runs} iterations...\n")
+    
+    # Run repeated benchmark
+    result = run_repeated_benchmark(
+        run_fn=train_and_evaluate,
+        metric_key="accuracy",
+        runs=CONFIG.benchmark_runs,
+        confidence=CONFIG.confidence_level
+    )
+    
+    # Display results
+    print(f"Accuracy: {result.metric_mean:.4f} ± {result.metric_ci_margin:.4f}")
+    print(f"  Standard deviation: {result.metric_std:.4f}")
+    print(f"  Confidence level: {result.confidence_level * 100:.0f}%")
+    print(f"  {result.runs} runs\n")
+    
+    print(f"Latency: {result.latency_mean_ms:.2f} ± {result.latency_ci_margin_ms:.2f} ms")
+    print(f"  Standard deviation: {result.latency_std_ms:.2f} ms")
+    print(f"  Range: [{result.latency_mean_ms - result.latency_ci_margin_ms:.2f}, "
+          f"{result.latency_mean_ms + result.latency_ci_margin_ms:.2f}] ms")
+
+if __name__ == "__main__":
+    main()
+```
+
+### Multi-Experiment Analysis
+
+```python
+import pandas as pd
+from config import CONFIG
+from evaluation.benchmark import benchmark_table_metrics
+
+# Simulate running experiments with different configurations
+experiments = []
+
+for memory_limit in CONFIG.experiment_memory_limits_mb:
+    for compute_budget in CONFIG.experiment_compute_budgets:
+        # Run experiment (placeholder)
+        result = {
+            "memory_limit_mb": memory_limit,
+            "compute_budget": compute_budget,
+            "accuracy": 0.85 + (memory_limit / 1000) + (compute_budget / 100000),
+            "latency_ms": 100 + (1000 / memory_limit) + (100000 / compute_budget)
+        }
+        experiments.append(result)
+
+# Convert to DataFrame
+df = pd.DataFrame(experiments)
+
+# Compute statistics
+summary = benchmark_table_metrics(
+    df=df,
+    metric_columns=["accuracy", "latency_ms"],
+    confidence=0.95
+)
+
+print("Experiment Summary:\n")
+for metric, stats in summary.items():
+    print(f"{metric}:")
+    print(f"  Mean: {stats['mean']:.4f}")
+    print(f"  Std: {stats['std']:.4f}")
+    print(f"  95% CI: ± {stats['ci_margin']:.4f}")
+    print(f"  Range: [{stats['mean'] - stats['ci_margin']:.4f}, "
+          f"{stats['mean'] + stats['ci_margin']:.4f}]\n")
+```
+
+## Best Practices
+
+### 1. Use Sufficient Iterations
+
+More benchmark runs provide tighter confidence intervals:
+
+```python
+# Minimal (fast but wide intervals)
+result = run_repeated_benchmark(run_fn, "accuracy", runs=5)
+
+# Recommended (balanced)
+result = run_repeated_benchmark(run_fn, "accuracy", runs=10)
+
+# High precision (slow but tight intervals)
+result = run_repeated_benchmark(run_fn, "accuracy", runs=30)
+```
+
+### 2. Control for Variance
+
+Reduce variance by:
+- Setting a consistent random seed
+- Running benchmarks on idle systems
+- Disabling background processes
+- Using the same hardware and environment
+
+### 3. Report Complete Statistics
+
+Always report mean, standard deviation, and confidence interval:
+
+```python
+print(f"Accuracy: {result.metric_mean:.3f} ± {result.metric_ci_margin:.3f} "
+      f"(std: {result.metric_std:.3f}, n={result.runs}, CI={result.confidence_level*100:.0f}%)")
+```
+
+### 4. Save Benchmark Results
+
+```python
+import json
+
+result_dict = {
+    "metric_mean": result.metric_mean,
+    "metric_ci": [result.metric_mean - result.metric_ci_margin, 
+                  result.metric_mean + result.metric_ci_margin],
+    "latency_mean_ms": result.latency_mean_ms,
+    "latency_ci_ms": [result.latency_mean_ms - result.latency_ci_margin_ms,
+                      result.latency_mean_ms + result.latency_ci_margin_ms],
+    "runs": result.runs,
+    "confidence_level": result.confidence_level
+}
+
+with open(CONFIG.output_dir / "benchmark_results.json", "w") as f:
+    json.dump(result_dict, f, indent=2)
+```
+
+## Interpreting Benchmarks
+
+### Comparing Results
+
+Two benchmarks are statistically different if their confidence intervals don't overlap:
+
+```python
+result_a = run_repeated_benchmark(baseline_fn, "accuracy", runs=10)
+result_b = run_repeated_benchmark(optimized_fn, "accuracy", runs=10)
+
+# Check for overlap
+ci_a_lower = result_a.metric_mean - result_a.metric_ci_margin
+ci_a_upper = result_a.metric_mean + result_a.metric_ci_margin
+ci_b_lower = result_b.metric_mean - result_b.metric_ci_margin
+ci_b_upper = result_b.metric_mean + result_b.metric_ci_margin
+
+if ci_a_upper < ci_b_lower or ci_b_upper < ci_a_lower:
+    print("Results are statistically different")
+else:
+    print("Results overlap - difference may not be significant")
+```
+
+### Performance Regression Detection
+
+```python
+def check_regression(current_result, baseline_result, tolerance=0.05):
+    """Check if performance has regressed beyond tolerance."""
+    
+    # Use lower bound of current vs upper bound of baseline
+    current_lower = current_result.metric_mean - current_result.metric_ci_margin
+    baseline_upper = baseline_result.metric_mean + baseline_result.metric_ci_margin
+    
+    regression = (baseline_upper - current_lower) / baseline_upper
+    
+    if regression > tolerance:
+        print(f"WARNING: Performance regression detected ({regression*100:.1f}%)")
+        return True
+    return False
+```
+
+## See Also
+
+- [Configuration](/operations/configuration) - Benchmark configuration parameters
+- [Reproducibility](/operations/reproducibility) - Ensuring consistent benchmark results
+- [Troubleshooting](/operations/troubleshooting) - Debugging benchmark issues

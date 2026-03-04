@@ -1,0 +1,145 @@
+---
+title: Anomaly Detection API
+description: Detect outliers and simulate early warning systems for hospital data
+---
+
+## OutlierDetector
+
+Z-score based anomaly detector that identifies outliers using standardized distances from the mean.
+
+### Constructor
+
+```python
+OutlierDetector(random_state: int = 42)
+```
+
+<ParamField path="random_state" type="int" default="42">
+  Random seed for reproducibility (currently unused but provided for consistency)
+</ParamField>
+
+### Attributes
+
+<ResponseField name="center" type="np.ndarray | None">
+  Mean values for each feature, computed during fit
+</ResponseField>
+
+<ResponseField name="scale" type="np.ndarray | None">
+  Standard deviations for each feature (with 1e-6 added for numerical stability), computed during fit
+</ResponseField>
+
+### Methods
+
+#### fit
+
+Fit the detector by computing feature means and standard deviations.
+
+```python
+fit(X: pd.DataFrame) -> OutlierDetector
+```
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Training data with samples as rows and features as columns
+</ParamField>
+
+<ResponseField name="return" type="OutlierDetector">
+  Returns self for method chaining
+</ResponseField>
+
+#### score_samples
+
+Compute anomaly scores for samples.
+
+```python
+score_samples(X: pd.DataFrame) -> pd.Series
+```
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Data to score. Must have same features as training data.
+</ParamField>
+
+<ResponseField name="return" type="pd.Series">
+  Series of anomaly scores (mean absolute z-score across features). Higher scores indicate more anomalous samples.
+</ResponseField>
+
+#### detect
+
+Detect anomalies based on quantile threshold.
+
+```python
+detect(X: pd.DataFrame, threshold_quantile: float = 0.9) -> pd.DataFrame
+```
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Data to analyze for anomalies
+</ParamField>
+
+<ParamField path="threshold_quantile" type="float" default="0.9">
+  Quantile threshold for anomaly detection. Scores at or above this quantile are flagged as anomalies.
+</ParamField>
+
+<ResponseField name="return" type="pd.DataFrame">
+  DataFrame with columns:
+  - `anomaly_score`: Numeric anomaly scores (float)
+  - `is_anomaly`: Boolean flag indicating if score exceeds threshold (bool)
+</ResponseField>
+
+## simulate_early_warning
+
+Simulate an early warning system by counting alerts and measuring latency.
+
+```python
+simulate_early_warning(
+    scores: pd.Series,
+    timestamps: pd.DatetimeIndex,
+    threshold: float
+) -> dict[str, float]
+```
+
+<ParamField path="scores" type="pd.Series" required>
+  Time-ordered anomaly scores
+</ParamField>
+
+<ParamField path="timestamps" type="pd.DatetimeIndex" required>
+  Timestamps corresponding to each score (must be same length as scores)
+</ParamField>
+
+<ParamField path="threshold" type="float" required>
+  Score threshold for triggering alerts
+</ParamField>
+
+<ResponseField name="return" type="dict[str, float]">
+  Dictionary containing:
+  - `alert_count`: Total number of alerts triggered (float)
+  - `first_alert_latency_s`: Seconds from start to first alert (float, inf if no alerts)
+</ResponseField>
+
+## evaluate_detection_latency
+
+Evaluate detection latency by measuring time from ground truth event to first alert.
+
+```python
+evaluate_detection_latency(
+    scores: pd.Series,
+    ground_truth_events: pd.Series,
+    timestamps: pd.DatetimeIndex
+) -> float
+```
+
+<ParamField path="scores" type="pd.Series" required>
+  Anomaly scores for each time point
+</ParamField>
+
+<ParamField path="ground_truth_events" type="pd.Series" required>
+  Binary series (0 or 1) indicating when true events occurred
+</ParamField>
+
+<ParamField path="timestamps" type="pd.DatetimeIndex" required>
+  Timestamps for each observation (must be same length as scores and events)
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Latency in seconds from first ground truth event to first alert. Returns:
+  - Positive float: Seconds between first event and first subsequent alert
+  - `nan`: No ground truth events found
+  - `inf`: No alerts triggered after the first event
+</ResponseField>

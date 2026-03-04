@@ -1,0 +1,172 @@
+---
+title: "Preprocessing Module"
+description: "API reference for data cleaning and preparation functions"
+---
+
+## Overview
+
+The preprocessing module provides functions for cleaning hospital data, handling missing values, standardizing categorical variables, and ensuring consistent data types.
+
+## Functions
+
+### clean_hospital_data
+
+Cleans and standardizes hospital patient data by handling missing values, normalizing gender values, and ensuring numeric columns are properly typed.
+
+```python
+def clean_hospital_data(df: pd.DataFrame) -> pd.DataFrame
+```
+
+<ParamField path="df" type="pd.DataFrame" required>
+  Raw merged hospital DataFrame to clean. Typically the output from `merge_hospital_data()`.
+</ParamField>
+
+<ResponseField name="return" type="pd.DataFrame">
+  Cleaned DataFrame with:
+  - Standardized gender values ("m" or "f")
+  - Missing numeric values filled with 0
+  - Missing test results filled with "unknown"
+  - Missing diagnoses filled with "unknown"
+  - All numeric columns converted to proper numeric types
+</ResponseField>
+
+**Example**:
+```python
+import pandas as pd
+from preprocessing.cleaning import clean_hospital_data
+
+# Assume merged_df comes from merge_hospital_data()
+clean_df = clean_hospital_data(merged_df)
+
+print(f"Records cleaned: {len(clean_df)}")
+print(f"Gender values: {clean_df['gender'].unique()}")
+print(f"Missing values: {clean_df.isnull().sum().sum()}")
+```
+
+## Data Transformations
+
+The `clean_hospital_data` function applies the following transformations:
+
+### Gender Normalization
+
+Standardizes gender values to single-character codes:
+
+| Original | Normalized |
+|----------|------------|
+| "male" | "m" |
+| "female" | "f" |
+| "man" | "m" |
+| "woman" | "f" |
+| NaN | "f" |
+
+**Implementation**:
+```python
+clean["gender"] = clean["gender"].replace({
+    "male": "m", 
+    "female": "f", 
+    "man": "m", 
+    "woman": "f"
+})
+clean["gender"] = clean["gender"].fillna("f")
+```
+
+### Numeric Column Filling
+
+Fills missing values with 0 for the following numeric columns:
+- `bmi`: Body Mass Index
+- `children`: Number of children
+- `months`: Duration in months
+
+**Implementation**:
+```python
+clean[NUMERIC_FILL_COLUMNS] = clean[NUMERIC_FILL_COLUMNS].fillna(0)
+```
+
+### Test Result Filling
+
+Fills missing test results with "unknown" for:
+- `blood_test`: Blood test results
+- `ecg`: Electrocardiogram results
+- `ultrasound`: Ultrasound results
+- `mri`: MRI scan results
+- `xray`: X-ray results
+
+**Implementation**:
+```python
+for col in TEST_COLUMNS:
+    clean[col] = clean[col].fillna("unknown")
+```
+
+### Diagnosis Filling
+
+Fills missing diagnoses with "unknown":
+
+**Implementation**:
+```python
+clean["diagnosis"] = clean["diagnosis"].fillna("unknown")
+```
+
+### Numeric Type Conversion
+
+Converts the following columns to numeric types with coercion, filling any conversion errors with 0:
+- `age`: Patient age in years
+- `height`: Height measurement
+- `weight`: Weight measurement
+- `bmi`: Body Mass Index
+- `children`: Number of children
+- `months`: Duration in months
+
+**Implementation**:
+```python
+for col in ["age", "height", "weight", "bmi", "children", "months"]:
+    clean[col] = pd.to_numeric(clean[col], errors="coerce").fillna(0)
+```
+
+## Constants
+
+### NUMERIC_FILL_COLUMNS
+
+List of numeric columns that should be filled with 0 when missing.
+
+```python
+NUMERIC_FILL_COLUMNS = ["bmi", "children", "months"]
+```
+
+### TEST_COLUMNS
+
+List of test result columns that should be filled with "unknown" when missing.
+
+```python
+TEST_COLUMNS = ["blood_test", "ecg", "ultrasound", "mri", "xray"]
+```
+
+## Data Quality
+
+After cleaning, the DataFrame will have:
+- **No missing gender values**: All filled with "f" as default
+- **No missing numeric values**: All filled with 0
+- **No missing test results**: All filled with "unknown"
+- **No missing diagnoses**: All filled with "unknown"
+- **Consistent data types**: All numeric columns properly typed as float64
+- **Standardized categories**: Gender values normalized to "m" or "f"
+
+## Usage in Pipeline
+
+```python
+from pathlib import Path
+from ingestion.loader import load_hospital_data, merge_hospital_data
+from preprocessing.cleaning import clean_hospital_data
+
+# Load and merge data
+data_dir = Path("data/")
+datasets = load_hospital_data(data_dir)
+merged = merge_hospital_data(datasets)
+
+# Clean the merged data
+clean = clean_hospital_data(merged)
+
+# Verify data quality
+assert clean.isnull().sum().sum() == 0, "Cleaning failed: missing values remain"
+assert set(clean["gender"].unique()).issubset({"m", "f"}), "Gender values not normalized"
+print("Data cleaning complete!")
+```

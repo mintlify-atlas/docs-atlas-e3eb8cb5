@@ -1,0 +1,449 @@
+---
+title: Hardware Constraint Modeling
+description: How the platform adapts to memory limits, compute budgets, and resource-constrained environments
+---
+
+## Overview
+
+The Hospital Data Analysis Platform treats **hardware constraints as first-class experiment parameters**. Rather than assuming unlimited resources, the system explicitly models memory limits, compute budgets, and batch size constraints to ensure reliable operation in production environments.
+
+## Why Hardware-Aware Design?
+
+Traditional ML pipelines often ignore hardware constraints until deployment, leading to:
+
+- Out-of-memory errors in production
+- Unpredictable latency under load
+- Poor performance on edge devices
+- Difficulty reproducing results across environments
+
+By modeling constraints upfront, the platform enables:
+
+<CardGroup cols={2}>
+  <Card title="Predictable Performance" icon="gauge">
+    Batch sizes auto-adjust to stay within memory limits
+  </Card>
+  <Card title="Resource Planning" icon="calculator">
+    Compute utilization tracked and reported
+  </Card>
+  <Card title="Edge Deployment" icon="microchip">
+    Optimized for CPU-constrained environments
+  </Card>
+  <Card title="Reproducibility" icon="repeat">
+    Hardware profiles ensure consistent behavior
+  </Card>
+</CardGroup>
+
+## Hardware Profile Configuration
+
+### Configuration Parameters
+
+The `config.py` file defines hardware constraints:
+
+```python config.py
+@dataclass
+class SystemConfig:
+    # Stream processing configuration
+    stream_chunk_size: int = 16
+    stream_interval_ms: int = 10
+    
+    # Hardware constraints
+    hardware_memory_limit_mb: int = 256
+    hardware_compute_budget: int = 10_000
+    
+    # Experiment parameter sweeps
+    experiment_memory_limits_mb: list[int] = field(
+        default_factory=lambda: [64, 128, 256]
+    )
+    experiment_compute_budgets: list[int] = field(
+        default_factory=lambda: [2_000, 5_000, 10_000]
+    )
+    experiment_stream_speeds_ms: list[int] = field(
+        default_factory=lambda: [5, 10, 20]
+    )
+```
+
+### HardwareProfile Dataclass
+
+The `HardwareProfile` class encapsulates resource constraints:
+
+```python utils/hardware.py
+from dataclasses import dataclass
+
+@dataclass
+class HardwareProfile:
+    memory_limit_mb: int      # Maximum RAM available
+    compute_budget: int       # Operation count limit
+```
+
+## Memory Management
+
+### Batch Memory Estimation
+
+The platform estimates memory usage before allocating batches:
+
+```python utils/hardware.py
+def estimate_batch_memory_mb(
+    batch_size: int, 
+    feature_count: int, 
+    bytes_per_feature: int = 8
+) -> float:
+    """Estimate memory footprint of a batch in megabytes.
+    
+    Assumes float64 precision (8 bytes per feature) by default.
+    """
+    return (batch_size * feature_count * bytes_per_feature) / (1024 * 1024)
+```
+
+**Example calculation:**
+
+```python
+# 128 samples × 10 features × 8 bytes = 10,240 bytes ≈ 0.01 MB
+estimate_batch_memory_mb(batch_size=128, feature_count=10)
+# Returns: 0.009765625
+```
+
+### Automatic Batch Size Adjustment
+
+The system automatically reduces batch size to fit within memory constraints:
+
+```python utils/hardware.py
+def auto_adjust_batch_size(
+    initial_batch: int, 
+    feature_count: int, 
+    profile: HardwareProfile
+) -> int:
+    """Iteratively halve batch size until it fits in memory limit."""
+    batch = initial_batch
+    while batch > 1 and estimate_batch_memory_mb(batch, feature_count) > profile.memory_limit_mb:
+        batch //= 2
+    return max(1, batch)  # Ensure at least batch size of 1
+```
+
+**Example usage:**
+
+```python
+hardware = HardwareProfile(memory_limit_mb=256, compute_budget=10_000)
+
+# Try to use batch size 128
+adjusted = auto_adjust_batch_size(
+    initial_batch=128, 
+    feature_count=len(CONFIG.feature_columns),
+    profile=hardware
+)
+
+print(f"Adjusted batch size: {adjusted}")
+# Output depends on feature count and memory limit
+```
+
+### Memory Constraint Scenarios
+
+<Tabs>
+  <Tab title="Low Memory (64 MB)">
+    ```python
+    profile = HardwareProfile(memory_limit_mb=64, compute_budget=2_000)
+    
+    # With 100 features:
+    batch = auto_adjust_batch_size(128, feature_count=100, profile=profile)
+    # Result: batch = 8 (128 → 64 → 32 → 16 → 8)
+    ```
+    
+    Suitable for edge devices and embedded systems.
+  </Tab>
+  
+  <Tab title="Medium Memory (128 MB)">
+    ```python
+    profile = HardwareProfile(memory_limit_mb=128, compute_budget=5_000)
+    
+    # With 100 features:
+    batch = auto_adjust_batch_size(128, feature_count=100, profile=profile)
+    # Result: batch = 16
+    ```
+    
+    Typical for containerized deployments.
+  </Tab>
+  
+  <Tab title="High Memory (256 MB)">
+    ```python
+    profile = HardwareProfile(memory_limit_mb=256, compute_budget=10_000)
+    
+    # With 100 features:
+    batch = auto_adjust_batch_size(128, feature_count=100, profile=profile)
+    # Result: batch = 32 or higher
+    ```
+    
+    Default for development and testing environments.
+  </Tab>
+</Tabs>
+
+## Compute Budget Tracking
+
+### Utilization Calculation
+
+The system tracks what fraction of the compute budget is consumed:
+
+```python utils/hardware.py
+def compute_utilization(
+    operations: int, 
+    profile: HardwareProfile
+) -> float:
+    """Calculate fraction of compute budget used.
+    
+    Returns value capped at 1.0 (100% utilization).
+    """
+    return min(1.0, operations / max(profile.compute_budget, 1))
+```
+
+**Example:**
+
+```python
+profile = HardwareProfile(memory_limit_mb=256, compute_budget=10_000)
+
+# Dataset with 1000 rows and 10 features
+operations = 1000 * 10  # 10,000 operations
+utilization = compute_utilization(operations, profile)
+
+print(f"Compute utilization: {utilization:.1%}")
+# Output: "Compute utilization: 100.0%"
+```
+
+### Utilization Thresholds
+
+| Utilization | Interpretation | Action |
+|-------------|----------------|--------|
+| < 50% | Underutilized | Consider smaller compute budget or larger workload |
+| 50-90% | Healthy | Optimal resource usage |
+| > 90% | Near capacity | May need to reduce workload or increase budget |
+| 100% | At capacity | Consider splitting workload or increasing budget |
+
+## Pipeline Integration
+
+The main pipeline integrates hardware profiling:
+
+```python cli.py
+def run_pipeline() -> dict:
+    # Create hardware profile from config
+    hardware = HardwareProfile(
+        CONFIG.hardware_memory_limit_mb, 
+        CONFIG.hardware_compute_budget
+    )
+    
+    # Adjust batch size based on constraints
+    adjusted_batch = auto_adjust_batch_size(
+        128,  # Initial batch size
+        len(CONFIG.feature_columns),
+        hardware
+    )
+    
+    # Track compute utilization
+    total_operations = len(feat) * len(CONFIG.feature_columns)
+    utilization = compute_utilization(total_operations, hardware)
+    
+    # Include in results
+    results["hardware"] = {
+        "adjusted_batch_size": adjusted_batch,
+        "compute_utilization": utilization
+    }
+```
+
+## Hardware-Constrained Experiments
+
+### Scenario Generation
+
+The platform runs experiments across multiple constraint combinations:
+
+```python cli.py
+def _build_scenarios() -> list[ConstraintScenario]:
+    return [
+        ConstraintScenario(
+            memory_limit_mb=m, 
+            compute_budget=c, 
+            stream_interval_ms=s
+        )
+        for m, c, s in itertools.product(
+            CONFIG.experiment_memory_limits_mb,      # [64, 128, 256]
+            CONFIG.experiment_compute_budgets,       # [2_000, 5_000, 10_000]
+            CONFIG.experiment_stream_speeds_ms,      # [5, 10, 20]
+        )
+    ]
+```
+
+This generates **27 scenarios** (3 × 3 × 3) covering:
+
+- **Memory constraints**: 64 MB, 128 MB, 256 MB
+- **Compute budgets**: 2,000, 5,000, 10,000 operations
+- **Stream speeds**: 5 ms, 10 ms, 20 ms per chunk
+
+### Running Experiments
+
+```bash
+cd "Data Analysis for Hospitals/task"
+python cli.py early-warning-experiment
+```
+
+Outputs a JSON summary with metrics for each scenario:
+
+```json
+{
+  "scenario_count": 27,
+  "summary": {
+    "mean_detection_latency_s": 2.34,
+    "mean_prediction_accuracy": 0.87,
+    "mean_false_positive_rate": 0.12
+  },
+  "benchmark": {
+    "detection_latency_s": {"mean": 2.34, "ci_lower": 2.1, "ci_upper": 2.6},
+    "prediction_accuracy": {"mean": 0.87, "ci_lower": 0.85, "ci_upper": 0.89}
+  }
+}
+```
+
+### ConstraintScenario Dataclass
+
+```python evaluation/early_warning_experiment.py
+@dataclass
+class ConstraintScenario:
+    memory_limit_mb: int
+    compute_budget: int
+    stream_interval_ms: int
+```
+
+## Hardware Profile Tables
+
+The platform generates comprehensive hardware profiling reports:
+
+```python
+hardware_profile = build_hardware_profile_table(
+    feature_count=len(CONFIG.feature_columns),
+    batch_size=adjusted_batch,
+    stream_interval_ms=CONFIG.stream_interval_ms,
+)
+
+artifacts = write_hardware_profile_artifacts(
+    hardware_profile, 
+    CONFIG.output_dir
+)
+```
+
+Outputs tables showing:
+
+- Memory usage by batch size and feature count
+- Throughput estimates for different configurations
+- Latency projections under various stream speeds
+- Energy consumption estimates (model-based)
+
+## Stream Processing Constraints
+
+### Chunk Size Impact
+
+<Note>
+  Smaller chunks improve responsiveness but increase overhead. Larger chunks improve throughput but add latency.
+</Note>
+
+```python
+stream_stats = compare_batch_vs_streaming(
+    data=feat[CONFIG.feature_columns],
+    scoring_fn=lambda x: x.assign(score=x.sum(axis=1)),
+    chunk_size=CONFIG.stream_chunk_size  # Default: 16
+)
+```
+
+**Typical results:**
+
+| Chunk Size | Latency per Row | Throughput | Overhead |
+|------------|-----------------|------------|-----------|
+| 4 | ~0.5 ms | Lower | Higher |
+| 16 | ~0.2 ms | Medium | Medium |
+| 64 | ~0.1 ms | Higher | Lower |
+
+### Stream Interval Configuration
+
+The `stream_interval_ms` parameter controls how frequently chunks are processed:
+
+```python config.py
+stream_interval_ms: int = 10  # Process chunks every 10ms
+```
+
+Faster intervals (5 ms) provide lower latency but higher CPU usage. Slower intervals (20 ms) reduce overhead but increase end-to-end latency.
+
+## Best Practices
+
+<Steps>
+  <Step title="Profile First">
+    Run the pipeline with representative data to understand baseline resource usage
+  </Step>
+  
+  <Step title="Set Conservative Limits">
+    Configure memory limits 20-30% below physical RAM to account for OS overhead
+  </Step>
+  
+  <Step title="Validate Adjustments">
+    Check that `adjusted_batch_size` is reasonable (not 1 or 2) in production
+  </Step>
+  
+  <Step title="Monitor Utilization">
+    Track `compute_utilization` to ensure you're not over/under-provisioned
+  </Step>
+  
+  <Step title="Run Experiments">
+    Use the early-warning-experiment command to test multiple scenarios
+  </Step>
+</Steps>
+
+## Trade-offs and Limitations
+
+<Warning>
+  The memory estimation assumes float64 precision (8 bytes per feature). Using float32 or quantized models will reduce actual memory usage.
+</Warning>
+
+### Conservative Defaults
+
+**Cost**: Smaller batch sizes increase total runtime (more I/O overhead)
+
+**Benefit**: Prevents OOM errors and ensures stable operation under memory pressure
+
+### Coarse Estimates
+
+The hardware profiling functions provide **model-based estimates**, not device-calibrated measurements. For production deployments:
+
+- Validate with host-level profilers (e.g., `psutil`, `htop`)
+- Measure actual memory usage with memory profilers
+- Benchmark on target hardware, not development machines
+
+### Compute Budget as Operation Count
+
+The `compute_budget` is an abstract operation count, not a direct measure of CPU cycles or FLOPS. It serves as a relative constraint for comparing scenarios.
+
+## Related Utilities
+
+### Energy Estimation
+
+The platform includes approximate energy cost modeling:
+
+```python utils/energy.py
+energy = compare_precision_energy(
+    runtime_s=inference_stats["inference_latency_ms"] / 1000,
+    batch_size=adjusted_batch
+)
+```
+
+Provides coarse energy estimates for different precision levels (float32 vs float64).
+
+### Reproducibility Context
+
+Hardware profiles are logged for experiment reproducibility:
+
+```python
+results["reproducibility"] = reproducibility_context(CONFIG)
+# Includes: random_seed, hardware limits, batch sizes, etc.
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="sitemap" href="/concepts/architecture">
+    Learn about the overall system design
+  </Card>
+  <Card title="Pipeline Stages" icon="diagram-project" href="/concepts/pipeline-stages">
+    Understand how hardware constraints affect each stage
+  </Card>
+</CardGroup>

@@ -1,0 +1,166 @@
+---
+title: Predictive Modeling API
+description: Train and evaluate logistic regression models for risk and outcome prediction
+---
+
+## SimpleLogisticModel
+
+A simple logistic regression model implementation using gradient descent.
+
+### Constructor
+
+```python
+SimpleLogisticModel(lr: float = 0.01, epochs: int = 600)
+```
+
+<ParamField path="lr" type="float" default="0.01">
+  Learning rate for gradient descent optimization
+</ParamField>
+
+<ParamField path="epochs" type="int" default="600">
+  Number of training iterations
+</ParamField>
+
+### Attributes
+
+<ResponseField name="weights" type="np.ndarray | None">
+  Model weights including bias term. First element is bias, remaining are feature weights.
+</ResponseField>
+
+<ResponseField name="feature_columns" type="list[str] | None">
+  Names of features used during training
+</ResponseField>
+
+### Methods
+
+#### fit
+
+Train the logistic regression model on provided data.
+
+```python
+fit(X: pd.DataFrame, y: pd.Series) -> SimpleLogisticModel
+```
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Feature matrix with samples as rows and features as columns
+</ParamField>
+
+<ParamField path="y" type="pd.Series" required>
+  Binary target labels (0 or 1)
+</ParamField>
+
+<ResponseField name="return" type="SimpleLogisticModel">
+  Returns self for method chaining
+</ResponseField>
+
+#### predict_proba
+
+Predict class probabilities for samples.
+
+```python
+predict_proba(X: pd.DataFrame) -> np.ndarray
+```
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Feature matrix for prediction. Must contain all feature columns from training.
+</ParamField>
+
+<ResponseField name="return" type="np.ndarray">
+  Array of shape (n_samples, 2) with probabilities for class 0 and class 1
+</ResponseField>
+
+#### predict
+
+Predict binary class labels for samples.
+
+```python
+predict(X: pd.DataFrame) -> np.ndarray
+```
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Feature matrix for prediction. Must contain all feature columns from training.
+</ParamField>
+
+<ResponseField name="return" type="np.ndarray">
+  Binary predictions (0 or 1) using 0.5 probability threshold
+</ResponseField>
+
+## ModelArtifacts
+
+Dataclass containing trained models and test data.
+
+<ResponseField name="risk_model" type="SimpleLogisticModel">
+  Trained model for risk prediction
+</ResponseField>
+
+<ResponseField name="outcome_model" type="SimpleLogisticModel">
+  Trained model for outcome prediction
+</ResponseField>
+
+<ResponseField name="X_test" type="pd.DataFrame">
+  Test features
+</ResponseField>
+
+<ResponseField name="y_risk_test" type="pd.Series">
+  Test labels for risk target
+</ResponseField>
+
+<ResponseField name="y_outcome_test" type="pd.Series">
+  Test labels for outcome target
+</ResponseField>
+
+## train_predictive_models
+
+Train risk and outcome prediction models with automatic preprocessing and train/test split.
+
+```python
+train_predictive_models(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    risk_target: str,
+    outcome_target: str
+) -> ModelArtifacts
+```
+
+<ParamField path="df" type="pd.DataFrame" required>
+  Input dataset containing features, hospital, gender, and target columns
+</ParamField>
+
+<ParamField path="feature_cols" type="list[str]" required>
+  List of numerical feature column names to use for modeling
+</ParamField>
+
+<ParamField path="risk_target" type="str" required>
+  Column name for risk categorization (checks for "appendicitis" or "pregnancy")
+</ParamField>
+
+<ParamField path="outcome_target" type="str" required>
+  Column name for outcome target (binarized as 't' vs others)
+</ParamField>
+
+<ResponseField name="return" type="ModelArtifacts">
+  Contains trained risk and outcome models plus test data for evaluation
+</ResponseField>
+
+## evaluate_predictive_models
+
+Evaluate trained models on test data with multiple metrics.
+
+```python
+evaluate_predictive_models(artifacts: ModelArtifacts) -> dict[str, float]
+```
+
+<ParamField path="artifacts" type="ModelArtifacts" required>
+  Model artifacts from train_predictive_models containing models and test data
+</ParamField>
+
+<ResponseField name="return" type="dict[str, float]">
+  Dictionary containing:
+  - `risk_accuracy`: Accuracy for risk model
+  - `risk_f1`: F1 score for risk model
+  - `risk_auc`: AUC-ROC for risk model
+  - `outcome_accuracy`: Accuracy for outcome model
+  - `outcome_f1`: F1 score for outcome model
+  - `outcome_auc`: AUC-ROC for outcome model
+  - `sample_count`: Number of test samples
+</ResponseField>

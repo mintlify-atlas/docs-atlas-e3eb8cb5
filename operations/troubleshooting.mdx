@@ -1,0 +1,543 @@
+---
+title: Troubleshooting
+description: Common failure modes, debugging strategies, and solutions for the Hospital Data Analysis Platform
+---
+
+## Overview
+
+This guide covers common issues encountered when operating the Hospital Data Analysis Platform, along with diagnostic strategies and solutions.
+
+## Common Failure Modes
+
+### 1. Missing or Malformed Input Columns
+
+**Symptom**: KeyError or AttributeError during feature extraction
+
+```
+KeyError: 'age'
+AttributeError: 'DataFrame' object has no attribute 'bmi'
+```
+
+**Root Cause**: Input CSV files don't contain expected feature columns defined in `CONFIG.feature_columns`.
+
+**Diagnosis**:
+
+```python
+import pandas as pd
+from config import CONFIG
+
+# Load your data
+df = pd.read_csv(CONFIG.data_dir / "your_file.csv")
+
+# Check for missing columns
+expected = set(CONFIG.feature_columns + [CONFIG.target_risk, CONFIG.target_outcome])
+actual = set(df.columns)
+missing = expected - actual
+
+if missing:
+    print(f"Missing columns: {missing}")
+else:
+    print("All required columns present")
+```
+
+**Solutions**:
+
+1. **Update configuration** to match your data:
+   ```python
+   CONFIG.feature_columns = ["age", "height", "weight"]  # Match your CSV
+   CONFIG.target_risk = "diagnosis"
+   CONFIG.target_outcome = "blood_test"
+   ```
+
+2. **Preprocess data** to add missing columns:
+   ```python
+   # Calculate BMI if missing
+   if "bmi" not in df.columns:
+       df["bmi"] = df["weight"] / (df["height"] / 100) ** 2
+   ```
+
+3. **Validate schema** before processing:
+   ```python
+   def validate_schema(df, config):
+       required = set(config.feature_columns + [config.target_risk, config.target_outcome])
+       missing = required - set(df.columns)
+       if missing:
+           raise ValueError(f"Missing required columns: {missing}")
+   ```
+
+### 2. Memory Limit Exceeded
+
+**Symptom**: MemoryError or system becomes unresponsive
+
+```
+MemoryError: Unable to allocate array
+```
+
+**Root Cause**: Dataset size exceeds `CONFIG.hardware_memory_limit_mb` or system memory.
+
+**Diagnosis**:
+
+```python
+import pandas as pd
+from config import CONFIG
+
+# Check DataFrame memory usage
+df = pd.read_csv(CONFIG.data_dir / "large_file.csv")
+memory_mb = df.memory_usage(deep=True).sum() / (1024 ** 2)
+
+print(f"DataFrame size: {memory_mb:.2f} MB")
+print(f"Memory limit: {CONFIG.hardware_memory_limit_mb} MB")
+
+if memory_mb > CONFIG.hardware_memory_limit_mb:
+    print("WARNING: Dataset exceeds memory limit")
+```
+
+**Solutions**:
+
+1. **Reduce chunk size** for streaming:
+   ```python
+   CONFIG.stream_chunk_size = 8  # Reduce from default 16
+   ```
+
+2. **Use chunked processing**:
+   ```python
+   chunks = pd.read_csv(CONFIG.data_dir / "large_file.csv", chunksize=1000)
+   results = []
+   for chunk in chunks:
+       result = process_chunk(chunk)
+       results.append(result)
+   ```
+
+3. **Optimize data types**:
+   ```python
+   # Convert float64 to float32
+   for col in df.select_dtypes(include=['float64']).columns:
+       df[col] = df[col].astype('float32')
+   
+   # Use categorical for low-cardinality columns
+   df['diagnosis'] = df['diagnosis'].astype('category')
+   ```
+
+4. **Increase memory limit** (if hardware allows):
+   ```python
+   CONFIG.hardware_memory_limit_mb = 512
+   ```
+
+### 3. ONNX Export Failures
+
+**Symptom**: Error during model export to ONNX format
+
+```
+ONNXConversionError: Unsupported operator
+AttributeError: 'CustomEstimator' object has no attribute 'coef_'
+```
+
+**Root Cause**: Model uses operators or architectures not supported by ONNX converter.
+
+**Diagnosis**:
+
+```python
+from skl2onnx import to_onnx
+import traceback
+
+try:
+    onnx_model = to_onnx(model, X_sample)
+    print("Export successful")
+except Exception as e:
+    print(f"Export failed: {type(e).__name__}")
+    print(f"Message: {str(e)}")
+    traceback.print_exc()
+```
+
+**Solutions**:
+
+1. **Use supported estimators**: Stick to scikit-learn models with good ONNX support:
+   ```python
+   from sklearn.ensemble import RandomForestClassifier
+   from sklearn.linear_model import LogisticRegression
+   
+   # Well-supported models
+   model = RandomForestClassifier()
+   # or
+   model = LogisticRegression()
+   ```
+
+2. **Check model attributes** before export:
+   ```python
+   # Ensure model is fitted
+   if not hasattr(model, 'classes_'):
+       raise ValueError("Model not fitted")
+   ```
+
+3. **Simplify custom estimators**:
+   ```python
+   # Avoid complex custom transformers
+   # Use sklearn.preprocessing.FunctionTransformer instead
+   from sklearn.preprocessing import FunctionTransformer
+   
+   transformer = FunctionTransformer(lambda x: x ** 2)
+   ```
+
+4. **Fall back to pickle** if ONNX export fails:
+   ```python
+   import pickle
+   
+   try:
+       onnx_model = to_onnx(model, X_sample)
+       # Save ONNX
+   except Exception:
+       print("ONNX export failed, using pickle")
+       with open(CONFIG.output_dir / "model.pkl", "wb") as f:
+           pickle.dump(model, f)
+   ```
+
+### 4. Non-Reproducible Results
+
+**Symptom**: Different results on repeated runs despite setting seed
+
+**Root Cause**: Random seed not propagated correctly, or non-deterministic operations.
+
+**Diagnosis**:
+
+```python
+from utils.reproducibility import reproducibility_context, set_global_seed
+from config import CONFIG
+import json
+
+# Run 1
+set_global_seed(CONFIG.random_seed)
+context1 = reproducibility_context(CONFIG)
+result1 = train_model()
+
+# Run 2
+set_global_seed(CONFIG.random_seed)
+context2 = reproducibility_context(CONFIG)
+result2 = train_model()
+
+# Compare contexts
+print("Context 1:", json.dumps(context1, indent=2))
+print("Context 2:", json.dumps(context2, indent=2))
+print(f"Results equal: {result1 == result2}")
+```
+
+**Solutions**:
+
+1. **Set seed early**:
+   ```python
+   from utils.reproducibility import set_global_seed
+   from config import CONFIG
+   
+   # Call this BEFORE any imports that use randomness
+   set_global_seed(CONFIG.random_seed)
+   ```
+
+2. **Check environment variables**:
+   ```python
+   import os
+   
+   print("OMP_NUM_THREADS:", os.environ.get("OMP_NUM_THREADS"))
+   print("PYTHONHASHSEED:", os.environ.get("PYTHONHASHSEED"))
+   
+   # Should all be "1" or the seed value
+   ```
+
+3. **Verify scikit-learn random_state**:
+   ```python
+   from sklearn.ensemble import RandomForestClassifier
+   
+   # Always pass random_state
+   model = RandomForestClassifier(random_state=CONFIG.random_seed)
+   ```
+
+4. **Disable parallel processing** in scikit-learn:
+   ```python
+   # Set n_jobs=1 for reproducibility
+   model = RandomForestClassifier(n_jobs=1, random_state=CONFIG.random_seed)
+   ```
+
+### 5. Benchmark Variance Too High
+
+**Symptom**: Wide confidence intervals, unstable benchmark results
+
+**Root Cause**: System load, insufficient iterations, or inherent algorithm variance.
+
+**Diagnosis**:
+
+```python
+from evaluation.benchmark import run_repeated_benchmark
+from config import CONFIG
+
+result = run_repeated_benchmark(train_and_evaluate, "accuracy", runs=CONFIG.benchmark_runs)
+
+coeff_of_variation = result.metric_std / result.metric_mean
+relative_margin = result.metric_ci_margin / result.metric_mean
+
+print(f"Coefficient of variation: {coeff_of_variation:.2%}")
+print(f"Relative CI margin: {relative_margin:.2%}")
+
+if relative_margin > 0.05:  # More than 5%
+    print("WARNING: High variance detected")
+```
+
+**Solutions**:
+
+1. **Increase benchmark runs**:
+   ```python
+   CONFIG.benchmark_runs = 20  # Up from default 5
+   ```
+
+2. **Run on idle system**:
+   ```bash
+   # Linux: Check system load
+   top
+   
+   # Kill unnecessary processes before benchmarking
+   ```
+
+3. **Use higher confidence level** for critical measurements:
+   ```python
+   CONFIG.confidence_level = 0.99  # 99% confidence
+   ```
+
+4. **Profile system resources**:
+   ```python
+   import psutil
+   
+   print(f"CPU usage: {psutil.cpu_percent()}%")
+   print(f"Memory usage: {psutil.virtual_memory().percent}%")
+   
+   # Wait for system to stabilize
+   if psutil.cpu_percent() > 50:
+       print("WARNING: High CPU usage, benchmarks may be unreliable")
+   ```
+
+### 6. Alert Threshold Drift
+
+**Symptom**: Excessive false positives or missed anomalies
+
+**Root Cause**: Alert thresholds not calibrated for current data distribution.
+
+**Diagnosis**:
+
+```python
+import pandas as pd
+from config import CONFIG
+
+# Load recent predictions
+df = pd.read_csv(CONFIG.output_dir / "predictions.csv")
+
+# Analyze distribution
+print(df["prediction_score"].describe())
+print(f"\n95th percentile: {df['prediction_score'].quantile(0.95)}")
+print(f"99th percentile: {df['prediction_score'].quantile(0.99)}")
+
+# Check alert rate
+alert_threshold = 0.8
+alert_rate = (df["prediction_score"] > alert_threshold).mean()
+print(f"\nCurrent alert rate: {alert_rate:.2%}")
+```
+
+**Solutions**:
+
+1. **Recalibrate thresholds** based on recent data:
+   ```python
+   # Set threshold to 95th percentile
+   new_threshold = df["prediction_score"].quantile(0.95)
+   print(f"Recommended threshold: {new_threshold:.3f}")
+   ```
+
+2. **Use adaptive thresholds**:
+   ```python
+   # Rolling window calibration
+   window_size = 1000
+   rolling_threshold = df["prediction_score"].rolling(window_size).quantile(0.95)
+   ```
+
+3. **Monitor threshold effectiveness**:
+   ```python
+   # Track false positive rate
+   if "ground_truth" in df.columns:
+       fps = ((df["prediction_score"] > alert_threshold) & (df["ground_truth"] == 0)).sum()
+       fpr = fps / (df["ground_truth"] == 0).sum()
+       print(f"False positive rate: {fpr:.2%}")
+   ```
+
+## Diagnostic Strategies
+
+### Enable Verbose Logging
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(CONFIG.output_dir / "debug.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+logger.debug("Verbose logging enabled")
+```
+
+### Checkpoint Intermediate Results
+
+```python
+import pickle
+from pathlib import Path
+
+def checkpoint(obj, name: str):
+    """Save intermediate results for debugging."""
+    checkpoint_dir = CONFIG.output_dir / "checkpoints"
+    checkpoint_dir.mkdir(exist_ok=True)
+    
+    path = checkpoint_dir / f"{name}.pkl"
+    with open(path, "wb") as f:
+        pickle.dump(obj, f)
+    print(f"Checkpoint saved: {path}")
+
+# Usage
+preprocessed_data = preprocess(raw_data)
+checkpoint(preprocessed_data, "preprocessed_data")
+
+features = extract_features(preprocessed_data)
+checkpoint(features, "features")
+```
+
+### Validate Data at Each Stage
+
+```python
+import pandas as pd
+import numpy as np
+
+def validate_dataframe(df: pd.DataFrame, stage: str):
+    """Comprehensive DataFrame validation."""
+    print(f"\n=== Validation: {stage} ===")
+    
+    # Check shape
+    print(f"Shape: {df.shape}")
+    
+    # Check for nulls
+    null_counts = df.isnull().sum()
+    if null_counts.any():
+        print(f"WARNING: Null values found:")
+        print(null_counts[null_counts > 0])
+    
+    # Check for infinite values
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    for col in numeric_cols:
+        if np.isinf(df[col]).any():
+            print(f"WARNING: Infinite values in column '{col}'")
+    
+    # Check for duplicates
+    dup_count = df.duplicated().sum()
+    if dup_count > 0:
+        print(f"WARNING: {dup_count} duplicate rows")
+    
+    # Memory usage
+    memory_mb = df.memory_usage(deep=True).sum() / (1024 ** 2)
+    print(f"Memory usage: {memory_mb:.2f} MB")
+    
+    print(f"=== End Validation ===")
+
+# Usage
+validate_dataframe(raw_data, "Raw Input")
+validate_dataframe(processed_data, "After Preprocessing")
+```
+
+### Profile Performance Bottlenecks
+
+```python
+import time
+import cProfile
+import pstats
+from io import StringIO
+
+def profile_function(func, *args, **kwargs):
+    """Profile a function and print statistics."""
+    profiler = cProfile.Profile()
+    profiler.enable()
+    
+    result = func(*args, **kwargs)
+    
+    profiler.disable()
+    
+    # Print statistics
+    s = StringIO()
+    stats = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+    stats.print_stats(20)  # Top 20 functions
+    print(s.getvalue())
+    
+    return result
+
+# Usage
+result = profile_function(train_model, X_train, y_train)
+```
+
+## Emergency Recovery
+
+### Restore from Checkpoints
+
+```python
+import pickle
+from pathlib import Path
+
+def load_checkpoint(name: str):
+    """Load a saved checkpoint."""
+    path = CONFIG.output_dir / "checkpoints" / f"{name}.pkl"
+    if not path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {path}")
+    
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+# Recovery
+try:
+    result = run_full_pipeline()
+except Exception as e:
+    print(f"Pipeline failed: {e}")
+    print("Attempting recovery from checkpoint...")
+    
+    # Load last successful stage
+    features = load_checkpoint("features")
+    result = run_from_features(features)
+```
+
+### Safe Mode Execution
+
+```python
+from config import CONFIG, SystemConfig
+
+def create_safe_config() -> SystemConfig:
+    """Create a conservative configuration for debugging."""
+    safe_config = SystemConfig(
+        random_seed=42,
+        test_size=0.25,
+        stream_chunk_size=4,  # Very small chunks
+        hardware_memory_limit_mb=64,  # Low memory
+        benchmark_runs=2,  # Minimal runs
+    )
+    return safe_config
+
+# Usage
+if DEBUG_MODE:
+    CONFIG = create_safe_config()
+    print("Running in SAFE MODE with conservative settings")
+```
+
+## Getting Help
+
+If you encounter issues not covered in this guide:
+
+1. **Check logs**: Review `CONFIG.output_dir / "debug.log"`
+2. **Validate environment**: Use `reproducibility_context(CONFIG)` to capture system state
+3. **Isolate the issue**: Use checkpoints and validation to identify the failing stage
+4. **Compare with baseline**: Run against known-good data and configuration
+
+## See Also
+
+- [Configuration](/operations/configuration) - Understanding system parameters
+- [Reproducibility](/operations/reproducibility) - Ensuring consistent execution
+- [Benchmarking](/operations/benchmarking) - Performance measurement and analysis

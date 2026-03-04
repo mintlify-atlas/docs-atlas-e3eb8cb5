@@ -1,0 +1,59 @@
+---
+title: "Inference API"
+description: "Real-time streaming inference for patient risk prediction"
+---
+
+## run_streaming_inference
+
+```python
+def run_streaming_inference(
+    X: pd.DataFrame,
+    model,
+    chunk_size: int
+) -> pd.DataFrame
+```
+
+Runs inference on patient data in streaming mode, processing chunks sequentially to predict patient risk.
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Input features DataFrame containing patient data for risk prediction
+</ParamField>
+
+<ParamField path="model" type="sklearn-compatible model" required>
+  Trained model with `predict_proba` method for risk prediction. Must return probability scores for binary classification
+</ParamField>
+
+<ParamField path="chunk_size" type="int" required>
+  Number of rows to process per chunk in streaming mode
+</ParamField>
+
+<ResponseField name="return" type="pd.DataFrame">
+  DataFrame with the following columns:
+  - `risk_probability`: Predicted probability of positive risk (class 1)
+  - `risk_label`: Binary label (0 or 1) based on 0.5 probability threshold
+  
+  The returned DataFrame maintains the original index from the input and is sorted by index.
+</ResponseField>
+
+### Example
+
+```python
+from real_time.inference import run_streaming_inference
+import pandas as pd
+
+# Assume model is already trained
+X_test = pd.DataFrame(...)  # Patient features
+
+results = run_streaming_inference(
+    X=X_test,
+    model=trained_model,
+    chunk_size=100
+)
+
+print(results.head())
+# Output:
+#    risk_probability  risk_label
+# 0          0.234567           0
+# 1          0.876543           1
+# 2          0.456789           0
+```

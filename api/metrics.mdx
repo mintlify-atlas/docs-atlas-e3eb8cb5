@@ -1,0 +1,43 @@
+---
+title: "Evaluation Metrics API"
+description: "API reference for evaluation metrics and performance tradeoff calculations"
+---
+
+## Overview
+
+The metrics module provides functions for calculating performance tradeoffs between different model characteristics.
+
+## Functions
+
+### latency_accuracy_tradeoff
+
+Calculates the tradeoff ratio between accuracy and latency.
+
+```python
+def latency_accuracy_tradeoff(accuracy: float, latency_ms: float) -> float
+```
+
+<ParamField path="accuracy" type="float" required>
+  The accuracy value (typically between 0 and 1)
+</ParamField>
+
+<ParamField path="latency_ms" type="float" required>
+  The latency in milliseconds
+</ParamField>
+
+<ResponseField name="return" type="float">
+  The tradeoff ratio calculated as accuracy divided by latency. A higher value indicates better performance (higher accuracy with lower latency).
+</ResponseField>
+
+**Implementation Notes:**
+- Uses a minimum latency threshold of 1e-6 to prevent division by zero
+- Returns accuracy / max(latency_ms, 1e-6)
+
+**Example:**
+```python
+from evaluation.metrics import latency_accuracy_tradeoff
+
+# Model with 95% accuracy and 100ms latency
+tradeoff = latency_accuracy_tradeoff(0.95, 100.0)
+print(f"Tradeoff ratio: {tradeoff}")
+```

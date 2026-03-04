@@ -1,0 +1,232 @@
+---
+title: "Feature Engineering Module"
+description: "API reference for building derived features from cleaned hospital data"
+---
+
+## Overview
+
+The feature engineering module creates derived features from cleaned hospital data, including age ranges, adult indicators, and BMI risk categories.
+
+## Functions
+
+### build_features
+
+Builds derived features from cleaned hospital data for use in predictive modeling.
+
+```python
+def build_features(df: pd.DataFrame) -> pd.DataFrame
+```
+
+<ParamField path="df" type="pd.DataFrame" required>
+  Cleaned hospital DataFrame. Typically the output from `clean_hospital_data()`.
+</ParamField>
+
+<ResponseField name="return" type="pd.DataFrame">
+  DataFrame with all original columns plus three new engineered features:
+  - `age_range`: Categorical age range ("0-15", "15-35", "35-55", "55-70", "70-80")
+  - `is_adult`: Binary indicator (1 if age >= 18, else 0)
+  - `bmi_risk`: BMI risk category (0=underweight, 1=normal, 2=overweight, 3=obese)
+</ResponseField>
+
+**Example**:
+```python
+import pandas as pd
+from feature_engineering.features import build_features
+
+# Assume clean_df comes from clean_hospital_data()
+feature_df = build_features(clean_df)
+
+print(f"Original columns: {len(clean_df.columns)}")
+print(f"After feature engineering: {len(feature_df.columns)}")
+print(f"New features: age_range, is_adult, bmi_risk")
+print(f"\nAge range distribution:\n{feature_df['age_range'].value_counts()}")
+print(f"\nAdult ratio: {feature_df['is_adult'].mean():.2%}")
+print(f"\nBMI risk distribution:\n{feature_df['bmi_risk'].value_counts()}")
+```
+
+## Engineered Features
+
+### age_range
+
+Categorizes patient age into clinical age ranges.
+
+**Type**: Categorical (ordinal)
+
+**Categories**:
+| Range | Label | Description |
+|-------|-------|-------------|
+| [0, 15) | "0-15" | Pediatric |
+| [15, 35) | "15-35" | Young adult |
+| [35, 55) | "35-55" | Middle age |
+| [55, 70) | "55-70" | Senior |
+| [70, 80] | "70-80" | Elderly |
+
+**Implementation**:
+```python
+feat["age_range"] = pd.cut(
+    feat["age"], 
+    bins=[0, 15, 35, 55, 70, 80], 
+    labels=["0-15", "15-35", "35-55", "55-70", "70-80"], 
+    right=False
+)
+```
+
+**Example Output**:
+```python
+# Patient aged 42
+age_range = "35-55"
+
+# Patient aged 68
+age_range = "55-70"
+
+# Patient aged 12
+age_range = "0-15"
+```
+
+### is_adult
+
+Binary indicator for adult patients (age >= 18).
+
+**Type**: Integer (0 or 1)
+
+**Values**:
+- `1`: Patient is an adult (age >= 18)
+- `0`: Patient is a minor (age < 18)
+
+**Implementation**:
+```python
+feat["is_adult"] = (feat["age"] >= 18).astype(int)
+```
+
+**Example Output**:
+```python
+# Patient aged 25
+is_adult = 1
+
+# Patient aged 16
+is_adult = 0
+
+# Patient aged 18 (exactly)
+is_adult = 1
+```
+
+**Use Cases**:
+- Filtering adult-only analyses
+- Stratifying models by age group
+- Computing age-specific metrics
+- Regulatory compliance (pediatric vs. adult protocols)
+
+### bmi_risk
+
+Body Mass Index risk category based on clinical thresholds.
+
+**Type**: Float (0.0, 1.0, 2.0, or 3.0)
+
+**Categories**:
+| BMI Range | Risk Level | Code | Description |
+|-----------|------------|------|-------------|
+| < 18.5 | Underweight | 0.0 | Below healthy weight |
+| [18.5, 25) | Normal | 1.0 | Healthy weight range |
+| [25, 30) | Overweight | 2.0 | Above healthy weight |
+| >= 30 | Obese | 3.0 | Clinically obese |
+
+**Implementation**:
+```python
+feat["bmi_risk"] = pd.cut(
+    feat["bmi"], 
+    bins=[-1, 18.5, 25, 30, 100], 
+    labels=[0, 1, 2, 3]
+).astype(float)
+feat["bmi_risk"] = feat["bmi_risk"].fillna(0)
+```
+
+**Example Output**:
+```python
+# Patient with BMI 22.5
+bmi_risk = 1.0  # Normal
+
+# Patient with BMI 28.3
+bmi_risk = 2.0  # Overweight
+
+# Patient with BMI 17.0
+bmi_risk = 0.0  # Underweight
+
+# Patient with BMI 32.5
+bmi_risk = 3.0  # Obese
+```
+
+**Missing Value Handling**: 
+Any missing or invalid BMI values are filled with `0.0` (underweight category).
+
+## Constants
+
+### AGE_BINS
+
+Bin edges for age range categorization.
+
+```python
+AGE_BINS = [0, 15, 35, 55, 70, 80]
+```
+
+Defines 5 age ranges with boundaries at 0, 15, 35, 55, 70, and 80 years.
+
+### AGE_LABELS
+
+Labels for age range categories.
+
+```python
+AGE_LABELS = ["0-15", "15-35", "35-55", "55-70", "70-80"]
+```
+
+Human-readable labels corresponding to `AGE_BINS`.
+
+## Complete Pipeline Example
+
+```python
+from pathlib import Path
+from ingestion.loader import load_hospital_data, merge_hospital_data
+from preprocessing.cleaning import clean_hospital_data
+from feature_engineering.features import build_features
+
+# Complete data preparation pipeline
+data_dir = Path("data/")
+
+# 1. Load data
+datasets = load_hospital_data(data_dir)
+print(f"Loaded {len(datasets)} datasets")
+
+# 2. Merge data
+merged = merge_hospital_data(datasets)
+print(f"Merged to {len(merged)} records")
+
+# 3. Clean data
+clean = clean_hospital_data(merged)
+print(f"Cleaned {len(clean)} records")
+
+# 4. Build features
+features = build_features(clean)
+print(f"Built {len(features.columns)} total columns")
+print(f"New features: age_range, is_adult, bmi_risk")
+
+# 5. Analyze feature distributions
+print("\nFeature Statistics:")
+print(f"Adult patients: {features['is_adult'].sum()} ({features['is_adult'].mean():.1%})")
+print(f"\nAge range distribution:")
+print(features['age_range'].value_counts().sort_index())
+print(f"\nBMI risk distribution:")
+print(features['bmi_risk'].value_counts().sort_index())
+
+# 6. Use features for modeling
+feature_cols = ['age', 'bmi', 'age_range', 'is_adult', 'bmi_risk']
+X = features[feature_cols]
+print(f"\nFeature matrix shape: {X.shape}")
+```
+
+## Feature Engineering Best Practices
+
+1. **Always apply to cleaned data**: Run `clean_hospital_data()` before `build_features()`
+2. **Preserve original data**: Features are added, not replaced
+3. **Handle edge cases**: Missing BMI values default to 0.0 (underweight)
+4. **Use consistent bins**: Age and BMI bins align with clinical standards
+5. **Document thresholds**: All cutoff values are defined as module constants
+6. **Type consistency**: BMI risk is float to allow NaN handling before filling

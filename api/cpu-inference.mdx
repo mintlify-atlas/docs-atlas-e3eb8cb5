@@ -1,0 +1,54 @@
+---
+title: "CPU Inference API"
+description: "CPU-optimized inference with performance metrics for deployment"
+---
+
+## run_cpu_inference
+
+```python
+def run_cpu_inference(
+    model,
+    X: pd.DataFrame
+) -> dict[str, float]
+```
+
+Executes inference on CPU and returns performance metrics along with prediction statistics.
+
+<ParamField path="model" type="sklearn-compatible model" required>
+  Trained model with `predict_proba` method. Should support CPU-based inference
+</ParamField>
+
+<ParamField path="X" type="pd.DataFrame" required>
+  Input features DataFrame for inference
+</ParamField>
+
+<ResponseField name="return" type="dict[str, float]">
+  Dictionary containing inference metrics:
+  - `inference_latency_ms`: Time taken for inference in milliseconds
+  - `output_mean_probability`: Mean of predicted probabilities (for class 1)
+  - `output_std_probability`: Standard deviation of predicted probabilities
+</ResponseField>
+
+### Example
+
+```python
+from deployment.cpu_inference import run_cpu_inference
+import pandas as pd
+
+X_test = pd.DataFrame(...)  # Patient features
+metrics = run_cpu_inference(model=trained_model, X=X_test)
+
+print(metrics)
+# Output:
+# {
+#     'inference_latency_ms': 45.23,
+#     'output_mean_probability': 0.387,
+#     'output_std_probability': 0.215
+# }
+```
+
+### Use Cases
+
+- **Performance Benchmarking**: Measure inference latency for deployment planning
+- **Model Monitoring**: Track prediction distribution through mean and standard deviation
+- **CPU Deployment**: Optimize and validate CPU-based inference performance
