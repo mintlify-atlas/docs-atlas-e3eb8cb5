@@ -1,0 +1,161 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "Hospital Data Analysis Platform",
+  "projectDescription": "Production-oriented analytics pipeline for hospital data with hardware-aware early warning, predictive modeling, and CPU-optimized real-time inference",
+  "theme": "aspen",
+  "primaryColor": "#2563eb",
+  "lightColor": "#3b82f6",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/pipeline-stages",
+              "concepts/hardware-constraints"
+            ]
+          },
+          {
+            "group": "Data Pipeline",
+            "pages": [
+              "pipeline/ingestion",
+              "pipeline/preprocessing",
+              "pipeline/feature-engineering"
+            ]
+          },
+          {
+            "group": "Modeling",
+            "pages": [
+              "modeling/predictive-models",
+              "modeling/risk-stratification",
+              "modeling/anomaly-detection",
+              "modeling/evaluation"
+            ]
+          },
+          {
+            "group": "Real-time Processing",
+            "pages": [
+              "realtime/streaming-inference",
+              "realtime/early-warning",
+              "realtime/latency-optimization"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/cpu-inference",
+              "deployment/onnx-export",
+              "deployment/monitoring",
+              "deployment/hardware-profiling"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/configuration",
+              "operations/reproducibility",
+              "operations/benchmarking",
+              "operations/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "api/cli"
+            ]
+          },
+          {
+            "group": "Data Modules",
+            "pages": [
+              "api/ingestion",
+              "api/preprocessing",
+              "api/feature-engineering"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/predictive",
+              "api/risk",
+              "api/anomaly-detection"
+            ]
+          },
+          {
+            "group": "Real-time",
+            "pages": [
+              "api/streaming",
+              "api/inference"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "api/cpu-inference",
+              "api/onnx-export",
+              "api/monitoring"
+            ]
+          },
+          {
+            "group": "Evaluation",
+            "pages": [
+              "api/metrics",
+              "api/benchmark",
+              "api/hardware-profile"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/config",
+              "api/reproducibility",
+              "api/hardware",
+              "api/energy"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "CPU-optimized predictive modeling and risk stratification for hospital data",
+    "Real-time anomaly detection with hardware-constrained early warning system",
+    "Streaming inference with configurable latency and throughput optimization",
+    "ONNX model export for cross-platform deployment",
+    "Deterministic reproducibility and comprehensive benchmarking",
+    "Hardware profiling with memory and compute budget constraints",
+    "End-to-end pipeline from data ingestion to deployment monitoring"
+  ],
+  "publicApiSurface": [
+    "cli.py run - Execute full analytics pipeline",
+    "cli.py manifest - Generate dataset manifest",
+    "cli.py early-warning-experiment - Run hardware-constrained experiments",
+    "SimpleLogisticModel - Custom logistic regression implementation",
+    "OutlierDetector - Anomaly detection system",
+    "train_predictive_models() - Train risk and outcome models",
+    "stratify_risk() - Risk band classification",
+    "simulate_early_warning() - Early warning alert generation",
+    "run_streaming_inference() - Real-time model scoring",
+    "export_pipeline_to_onnx() - Model serialization",
+    "build_monitoring_summary() - Deployment metrics",
+    "run_hardware_constrained_early_warning_experiment() - Constraint scenario evaluation",
+    "HardwareProfile - Resource constraint modeling",
+    "reproducibility_context() - Deterministic execution environment"
+  ]
+}
